@@ -1,0 +1,1 @@
+{"result": {"block_type": "DECISION", "confidence": 0.95, "reasoning": "The block determines a path based on whether a standard or custom configuration is needed, using conditional language like 'if' and branching actions."}, "input_tokens": 560, "output_tokens": 274}

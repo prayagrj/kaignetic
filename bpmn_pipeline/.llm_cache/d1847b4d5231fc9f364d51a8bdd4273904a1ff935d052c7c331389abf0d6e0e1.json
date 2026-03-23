@@ -1,0 +1,1 @@
+{"result": {"block_type": "DECISION", "confidence": 0.92, "reasoning": "The block starts with 'If' and specifies actions that occur only when the condition (modules incomplete by Day 15) is met, indicating a branching decision point."}, "input_tokens": 409, "output_tokens": 245}

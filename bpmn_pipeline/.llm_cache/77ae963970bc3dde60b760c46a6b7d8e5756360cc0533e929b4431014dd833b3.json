@@ -1,0 +1,1 @@
+{"result": [{"block_id": "dc8a0497", "block_type": "CONDITION", "confidence": 0.95, "reasoning": "The sentence defines the scope of the phase (activities from Day 2 to Day 30), which matches the definition of a CONDITION (scope, prerequisite, or applicability)."}], "input_tokens": 367, "output_tokens": 194}

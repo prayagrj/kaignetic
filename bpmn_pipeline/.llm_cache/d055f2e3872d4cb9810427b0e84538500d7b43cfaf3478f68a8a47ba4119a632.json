@@ -1,0 +1,1 @@
+{"result": [{"block_id": "b8e23aa3", "block_type": "ACTOR", "confidence": 0.92, "reasoning": "The block lists HRBP, Hiring Manager, and IT Helpdesk as role definitions, matching the ACTOR type."}], "input_tokens": 421, "output_tokens": 225}

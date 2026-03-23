@@ -1,0 +1,1 @@
+{"result": [{"block_id": "8f1efd71", "block_type": "NOTE", "confidence": 0.95, "reasoning": "The block lists definitions (joining date, HRBP, Hiring Manager, IT Helpdesk) under a 'Definition' heading, providing informational context rather than an actionable step or decision."}], "input_tokens": 420, "output_tokens": 232}

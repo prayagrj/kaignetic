@@ -1,0 +1,1 @@
+{"result": {"block_type": "DECISION", "confidence": 0.96, "reasoning": "The block starts with 'If' and specifies an action contingent on that condition, indicating a branching decision point."}, "input_tokens": 425, "output_tokens": 173}

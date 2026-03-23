@@ -1,0 +1,1 @@
+{"result": {"block_type": "DECISION", "confidence": 0.95, "reasoning": "The block starts with 'If' and introduces a conditional scenario that will branch to different actions, indicating a decision point."}, "input_tokens": 394, "output_tokens": 190}

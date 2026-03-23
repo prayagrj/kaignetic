@@ -1,0 +1,1 @@
+{"result": {"block_type": "NOTE", "confidence": 0.7, "reasoning": "The target block is a simple label indicating the SOP version, which serves as informational metadata rather than an actionable step, decision, or role."}, "input_tokens": 351, "output_tokens": 156}

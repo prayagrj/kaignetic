@@ -1,0 +1,1 @@
+{"result": {"block_type": "CONDITION", "confidence": 0.78, "reasoning": "The phrase specifies a required frequency (annual) for a process element, fitting a precondition/scope statement rather than an action or decision."}, "input_tokens": 343, "output_tokens": 189}

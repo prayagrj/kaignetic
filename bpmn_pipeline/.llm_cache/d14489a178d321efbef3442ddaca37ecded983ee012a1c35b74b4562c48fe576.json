@@ -1,0 +1,1 @@
+{"result": {"gateway_type": "XOR", "branches": [{"condition_label": "Proceed", "condition_var": null, "condition_value": null, "target_unit_id": "b305bc1b", "is_default": true}]}, "input_tokens": 682, "output_tokens": 350}

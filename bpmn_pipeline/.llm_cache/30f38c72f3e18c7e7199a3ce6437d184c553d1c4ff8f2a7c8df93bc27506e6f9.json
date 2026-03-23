@@ -1,0 +1,1 @@
+{"result": {"gateway_type": "XOR", "branches": [{"condition_label": "No concerns raised", "condition_var": null, "condition_value": null, "target_unit_id": "f52fcceb", "is_default": false}, {"condition_label": "Concerns raised", "condition_var": null, "condition_value": null, "target_unit_id": null, "is_default": true}]}, "input_tokens": 941, "output_tokens": 463}

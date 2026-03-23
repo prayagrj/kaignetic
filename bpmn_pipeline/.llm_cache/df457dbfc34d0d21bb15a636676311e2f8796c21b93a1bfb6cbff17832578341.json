@@ -1,0 +1,1 @@
+{"result": [{"block_id": "0c24908f", "block_type": "CONDITION", "confidence": 0.85, "reasoning": "The sentence defines the scope/applicability of the phase (activities required before the joining date), which matches the definition of a CONDITION rather than an actionable step or decision."}], "input_tokens": 365, "output_tokens": 235}

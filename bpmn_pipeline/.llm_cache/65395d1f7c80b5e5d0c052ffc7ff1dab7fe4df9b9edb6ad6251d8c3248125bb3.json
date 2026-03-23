@@ -1,0 +1,1 @@
+{"result": [{"block_id": "4f38f5cc", "block_type": "CONDITION", "confidence": 0.95, "reasoning": "The sentence defines the scope and time window of the phase, which matches the definition of a CONDITION (scope/applicability)."}], "input_tokens": 368, "output_tokens": 181}

@@ -1,0 +1,11 @@
+docling
+langchain
+langchain-groq
+langchain-core
+pydantic>=2
+lxml
+networkx
+python-dotenv
+pytest
+langfuse
+langfuse

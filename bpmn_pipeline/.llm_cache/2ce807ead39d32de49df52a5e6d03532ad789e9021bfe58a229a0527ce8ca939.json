@@ -1,0 +1,1 @@
+{"result": {"block_type": "EXCEPTION", "confidence": 0.88, "reasoning": "The block handles an error condition (documents still incomplete after a deadline) and specifies an escalation, which fits the EXCEPTION category."}, "input_tokens": 414, "output_tokens": 281}

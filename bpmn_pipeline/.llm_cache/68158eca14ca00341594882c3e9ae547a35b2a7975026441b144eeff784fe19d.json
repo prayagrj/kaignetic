@@ -1,0 +1,1 @@
+{"result": {"block_type": "DECISION", "confidence": 0.97, "reasoning": "The sentence begins with 'If' and defines a conditional branch (candidate declines) leading to specific actions, matching the DECISION pattern."}, "input_tokens": 491, "output_tokens": 150}

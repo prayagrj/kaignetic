@@ -1,0 +1,1 @@
+{"result": {"block_type": "ACTOR", "confidence": 0.85, "reasoning": "The sentence lists responsibilities (provides inputs, prepares team, assigns buddy, conducts check\u2011in) typical of a role description, matching the ACTOR type rather than a single actionable step."}, "input_tokens": 406, "output_tokens": 369}

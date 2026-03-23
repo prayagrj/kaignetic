@@ -1,0 +1,1 @@
+{"result": [{"block_id": "1d669b1e", "block_type": "CONDITION", "confidence": 0.85, "reasoning": "The sentence defines the scope and applicability of the phase, indicating which activities must be completed before the joining date, which matches the CONDITION category."}], "input_tokens": 366, "output_tokens": 224}

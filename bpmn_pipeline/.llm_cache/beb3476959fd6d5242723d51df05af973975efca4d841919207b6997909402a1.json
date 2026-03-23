@@ -1,0 +1,1 @@
+{"result": {"block_type": "CONDITION", "confidence": 0.92, "reasoning": "The sentence defines the scope of the phase (Day 2 to Day 30), which matches a precondition/scope statement rather than an action, decision, or other flow element."}, "input_tokens": 349, "output_tokens": 191}

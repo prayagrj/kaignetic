@@ -1,0 +1,1 @@
+{"result": {"block_type": "DECISION", "confidence": 0.96, "reasoning": "The block contains multiple 'If' conditions that determine different subsequent actions, indicating a branching decision point."}, "input_tokens": 484, "output_tokens": 282}

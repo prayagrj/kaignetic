@@ -1,0 +1,1 @@
+{"result": {"block_type": "NOTE", "confidence": 0.73, "reasoning": "The target block only contains a label \"Document ID:\" with no actionable instruction, decision point, or role, so it serves as informational metadata rather than a process step."}, "input_tokens": 346, "output_tokens": 162}

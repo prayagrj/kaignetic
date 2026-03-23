@@ -1,0 +1,1 @@
+{"result": {"gateway_type": "XOR", "branches": [{"condition_label": "Candidate requests deferral", "condition_var": "V_deferral_request", "condition_value": "true", "target_unit_id": "6281799e", "is_default": false}]}, "input_tokens": 712, "output_tokens": 304}

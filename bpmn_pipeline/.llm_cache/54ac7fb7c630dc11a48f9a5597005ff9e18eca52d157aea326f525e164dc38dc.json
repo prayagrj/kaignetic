@@ -1,0 +1,1 @@
+{"result": {"block_type": "DECISION", "confidence": 0.95, "reasoning": "The block contains an 'If' clause that determines a follow\u2011up action, indicating a branching decision point."}, "input_tokens": 443, "output_tokens": 245}

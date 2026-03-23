@@ -1,0 +1,1 @@
+{"result": [{"block_id": "1dcdb94d", "atomic_units": [{"sequence_in_block": 0, "action": "conduct_buddy_orientation_meeting", "actor": "HR Business Partner", "condition": null, "output": "V_buddy_orientation_completed", "is_terminal": false, "inputs": [], "outputs": ["V_buddy_orientation_completed"]}]}], "input_tokens": 635, "output_tokens": 450}

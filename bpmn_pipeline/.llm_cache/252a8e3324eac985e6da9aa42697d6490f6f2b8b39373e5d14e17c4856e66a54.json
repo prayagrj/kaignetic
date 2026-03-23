@@ -1,0 +1,1 @@
+{"result": [{"block_id": "1cd7c11d", "block_type": "CONDITION", "confidence": 0.85, "reasoning": "The sentence defines the scope and prerequisite of the phase, indicating which activities must be completed before the joining date, which matches the CONDITION category."}], "input_tokens": 366, "output_tokens": 229}

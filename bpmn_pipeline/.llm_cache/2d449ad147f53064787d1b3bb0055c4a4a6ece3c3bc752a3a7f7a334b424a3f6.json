@@ -1,0 +1,1 @@
+{"result": {"block_type": "DECISION", "confidence": 0.95, "reasoning": "The block begins with 'If the deferral is not approved', indicating a conditional branching point that directs different actions based on that condition."}, "input_tokens": 467, "output_tokens": 225}

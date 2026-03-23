@@ -1,0 +1,1 @@
+{"result": {"block_type": "UNKNOWN", "confidence": 0.2, "reasoning": "The target block only contains '2.1' without any descriptive text, making it impossible to determine if it represents a step, decision, condition, etc."}, "input_tokens": 360, "output_tokens": 173}

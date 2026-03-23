@@ -1,0 +1,1 @@
+{"result": {"block_type": "DECISION", "confidence": 0.93, "reasoning": "The block contains an 'If' clause that determines a different action (sending a deficiency notice) based on a condition, which is characteristic of a decision point."}, "input_tokens": 462, "output_tokens": 269}

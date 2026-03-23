@@ -1,0 +1,1 @@
+{"result": [{"block_id": "9caf22b0", "block_type": "NOTE", "confidence": 0.96, "reasoning": "The sentence describes the scope of the phase and provides informational context; it does not specify an action, decision point, error handling, role definition, or prerequisite, so it is classified as a NOTE."}], "input_tokens": 361, "output_tokens": 159}

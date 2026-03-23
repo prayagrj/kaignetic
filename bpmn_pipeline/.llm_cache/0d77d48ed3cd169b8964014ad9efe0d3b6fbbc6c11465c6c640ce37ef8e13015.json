@@ -1,0 +1,1 @@
+{"result": {"block_type": "DECISION", "confidence": 0.95, "reasoning": "The sentence starts with 'If' and defines a conditional branch that determines whether HRBP marks the checklist as complete."}, "input_tokens": 462, "output_tokens": 218}

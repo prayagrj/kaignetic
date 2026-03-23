@@ -1,0 +1,1 @@
+{"result": [{"block_id": "707226f8", "block_type": "CONDITION", "confidence": 0.95, "reasoning": "The sentence defines the scope of the phase (activities on the employee's first working day), which matches the definition of a CONDITION (scope/applicability)."}], "input_tokens": 360, "output_tokens": 217}
