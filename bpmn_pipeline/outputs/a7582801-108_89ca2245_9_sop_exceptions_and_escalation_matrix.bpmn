@@ -1,0 +1,266 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="definitions_a7582801-108_89ca2245" targetNamespace="http://bpmn.io/schema/bpmn">
+  <process id="process_a7582801-108_89ca2245" isExecutable="false">
+    <laneSet id="laneSet_1">
+      <lane id="lane_hr_business_partner" name="HR Business Partner">
+        <flowNodeRef>task_d1ea2fc0</flowNodeRef>
+        <flowNodeRef>task_97a38ebc</flowNodeRef>
+        <flowNodeRef>task_4cd244ad</flowNodeRef>
+        <flowNodeRef>task_441f64b2</flowNodeRef>
+        <flowNodeRef>task_d4316723</flowNodeRef>
+        <flowNodeRef>task_33f717fd</flowNodeRef>
+        <flowNodeRef>task_54ecd426</flowNodeRef>
+      </lane>
+      <lane id="lane_it_helpdesk" name="IT Helpdesk">
+        <flowNodeRef>task_2022adf9</flowNodeRef>
+      </lane>
+      <lane id="lane_hiring_manager" name="Hiring Manager">
+        <flowNodeRef>task_fcc4b99c</flowNodeRef>
+      </lane>
+      <lane id="lane_hr_manager" name="HR Manager">
+        <flowNodeRef>task_cd88ccbe</flowNodeRef>
+      </lane>
+    </laneSet>
+    <startEvent id="start_bfc845bb" name="Start"/>
+    <userTask id="task_d1ea2fc0" name="escalate"/>
+    <userTask id="task_97a38ebc" name="escalate"/>
+    <userTask id="task_4cd244ad" name="escalate"/>
+    <userTask id="task_441f64b2" name="decide escalation"/>
+    <userTask id="task_d4316723" name="escalate"/>
+    <userTask id="task_2022adf9" name="escalate"/>
+    <userTask id="task_33f717fd" name="send reminder"/>
+    <userTask id="task_54ecd426" name="assess performance concerns"/>
+    <userTask id="task_fcc4b99c" name="assess performance concerns"/>
+    <userTask id="task_cd88ccbe" name="process deferral request"/>
+    <endEvent id="end_b6f892e8" name="End"/>
+    <boundaryEvent id="boundary_075902bf" name="| Situation | Escalation To | Timeline |">
+      <errorEventDefinition/>
+    </boundaryEvent>
+    <boundaryEvent id="boundary_58109b51" name="Performance concerns at 30-day check-in HRBP + Hiring">
+      <errorEventDefinition/>
+    </boundaryEvent>
+    <sequenceFlow id="flow_2bf12a6f" sourceRef="start_bfc845bb" targetRef="task_d1ea2fc0"/>
+    <sequenceFlow id="flow_f27876bb" sourceRef="task_d1ea2fc0" targetRef="task_97a38ebc"/>
+    <sequenceFlow id="flow_ce5b9d43" sourceRef="task_97a38ebc" targetRef="task_4cd244ad"/>
+    <sequenceFlow id="flow_b9e2de27" sourceRef="task_4cd244ad" targetRef="task_441f64b2"/>
+    <sequenceFlow id="flow_0a8d4444" sourceRef="task_441f64b2" targetRef="task_d4316723"/>
+    <sequenceFlow id="flow_798b3039" sourceRef="task_d4316723" targetRef="task_2022adf9"/>
+    <sequenceFlow id="flow_0bd0e552" sourceRef="task_2022adf9" targetRef="task_33f717fd"/>
+    <sequenceFlow id="flow_e8b10c93" sourceRef="task_33f717fd" targetRef="task_54ecd426"/>
+    <sequenceFlow id="flow_dcabdca4" sourceRef="task_54ecd426" targetRef="task_fcc4b99c"/>
+    <sequenceFlow id="flow_c215bb04" sourceRef="task_fcc4b99c" targetRef="task_cd88ccbe"/>
+    <sequenceFlow id="flow_1adf9c2f" sourceRef="task_cd88ccbe" targetRef="end_b6f892e8"/>
+    <sequenceFlow id="flow_41920165" sourceRef="boundary_075902bf" targetRef="end_b6f892e8"/>
+    <sequenceFlow id="flow_f65a33cb" sourceRef="boundary_58109b51" targetRef="end_b6f892e8"/>
+    <dataObject id="do_V_escalation_hiring_manager_notified" name="V_escalation_hiring_manager_notified"/>
+    <dataObjectReference id="dor_V_escalation_hiring_manager_notified" dataObjectRef="do_V_escalation_hiring_manager_notified" name="V_escalation_hiring_manager_notified"/>
+    <dataOutputAssociation id="doa_out_V_escalation_hiring_manager_notified_d1ea2f">
+      <sourceRef>task_d1ea2fc0</sourceRef>
+      <targetRef>dor_V_escalation_hiring_manager_notified</targetRef>
+    </dataOutputAssociation>
+    <dataObject id="do_V_candidate_response_days" name="V_candidate_response_days"/>
+    <dataObjectReference id="dor_V_candidate_response_days" dataObjectRef="do_V_candidate_response_days" name="V_candidate_response_days"/>
+    <dataInputAssociation id="dia_in_V_candidate_response_days_d1ea2f">
+      <sourceRef>dor_V_candidate_response_days</sourceRef>
+      <targetRef>task_d1ea2fc0</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_escalation_hr_manager_and_legal_notified" name="V_escalation_hr_manager_and_legal_notified"/>
+    <dataObjectReference id="dor_V_escalation_hr_manager_and_legal_notified" dataObjectRef="do_V_escalation_hr_manager_and_legal_notified" name="V_escalation_hr_manager_and_legal_notified"/>
+    <dataOutputAssociation id="doa_out_V_escalation_hr_manager_and_legal_notified_97a38e">
+      <sourceRef>task_97a38ebc</sourceRef>
+      <targetRef>dor_V_escalation_hr_manager_and_legal_notified</targetRef>
+    </dataOutputAssociation>
+    <dataObject id="do_V_bg_v_discrepancy_flag" name="V_bg_v_discrepancy_flag"/>
+    <dataObjectReference id="dor_V_bg_v_discrepancy_flag" dataObjectRef="do_V_bg_v_discrepancy_flag" name="V_bg_v_discrepancy_flag"/>
+    <dataInputAssociation id="dia_in_V_bg_v_discrepancy_flag_97a38e">
+      <sourceRef>dor_V_bg_v_discrepancy_flag</sourceRef>
+      <targetRef>task_97a38ebc</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_escalation_hr_manager_notified_documents" name="V_escalation_hr_manager_notified_documents"/>
+    <dataObjectReference id="dor_V_escalation_hr_manager_notified_documents" dataObjectRef="do_V_escalation_hr_manager_notified_documents" name="V_escalation_hr_manager_notified_documents"/>
+    <dataOutputAssociation id="doa_out_V_escalation_hr_manager_notified_documents_4cd244">
+      <sourceRef>task_4cd244ad</sourceRef>
+      <targetRef>dor_V_escalation_hr_manager_notified_documents</targetRef>
+    </dataOutputAssociation>
+    <dataObject id="do_V_documents_complete" name="V_documents_complete"/>
+    <dataObjectReference id="dor_V_documents_complete" dataObjectRef="do_V_documents_complete" name="V_documents_complete"/>
+    <dataInputAssociation id="dia_in_V_documents_complete_4cd244">
+      <sourceRef>dor_V_documents_complete</sourceRef>
+      <targetRef>task_4cd244ad</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_escalation_to_it_manager" name="V_escalation_to_it_manager"/>
+    <dataObjectReference id="dor_V_escalation_to_it_manager" dataObjectRef="do_V_escalation_to_it_manager" name="V_escalation_to_it_manager"/>
+    <dataOutputAssociation id="doa_out_V_escalation_to_it_manager_441f64">
+      <sourceRef>task_441f64b2</sourceRef>
+      <targetRef>dor_V_escalation_to_it_manager</targetRef>
+    </dataOutputAssociation>
+    <dataObject id="do_V_it_setup_ready" name="V_it_setup_ready"/>
+    <dataObjectReference id="dor_V_it_setup_ready" dataObjectRef="do_V_it_setup_ready" name="V_it_setup_ready"/>
+    <dataInputAssociation id="dia_in_V_it_setup_ready_441f64">
+      <sourceRef>dor_V_it_setup_ready</sourceRef>
+      <targetRef>task_441f64b2</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_escalation_hr_manager_notified_training" name="V_escalation_hr_manager_notified_training"/>
+    <dataObjectReference id="dor_V_escalation_hr_manager_notified_training" dataObjectRef="do_V_escalation_hr_manager_notified_training" name="V_escalation_hr_manager_notified_training"/>
+    <dataOutputAssociation id="doa_out_V_escalation_hr_manager_notified_training_d43167">
+      <sourceRef>task_d4316723</sourceRef>
+      <targetRef>dor_V_escalation_hr_manager_notified_training</targetRef>
+    </dataOutputAssociation>
+    <dataObject id="do_V_training_complete" name="V_training_complete"/>
+    <dataObjectReference id="dor_V_training_complete" dataObjectRef="do_V_training_complete" name="V_training_complete"/>
+    <dataInputAssociation id="dia_in_V_training_complete_d43167">
+      <sourceRef>dor_V_training_complete</sourceRef>
+      <targetRef>task_d4316723</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_escalation_it_manager_notified" name="V_escalation_it_manager_notified"/>
+    <dataObjectReference id="dor_V_escalation_it_manager_notified" dataObjectRef="do_V_escalation_it_manager_notified" name="V_escalation_it_manager_notified"/>
+    <dataOutputAssociation id="doa_out_V_escalation_it_manager_notified_2022ad">
+      <sourceRef>task_2022adf9</sourceRef>
+      <targetRef>dor_V_escalation_it_manager_notified</targetRef>
+    </dataOutputAssociation>
+    <dataObject id="do_V_access_issue_resolved" name="V_access_issue_resolved"/>
+    <dataObjectReference id="dor_V_access_issue_resolved" dataObjectRef="do_V_access_issue_resolved" name="V_access_issue_resolved"/>
+    <dataInputAssociation id="dia_in_V_access_issue_resolved_2022ad">
+      <sourceRef>dor_V_access_issue_resolved</sourceRef>
+      <targetRef>task_2022adf9</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_reminder_sent_30_day_form" name="V_reminder_sent_30_day_form"/>
+    <dataObjectReference id="dor_V_reminder_sent_30_day_form" dataObjectRef="do_V_reminder_sent_30_day_form" name="V_reminder_sent_30_day_form"/>
+    <dataOutputAssociation id="doa_out_V_reminder_sent_30_day_form_33f717">
+      <sourceRef>task_33f717fd</sourceRef>
+      <targetRef>dor_V_reminder_sent_30_day_form</targetRef>
+    </dataOutputAssociation>
+    <dataObject id="do_V_30_day_form_submitted" name="V_30_day_form_submitted"/>
+    <dataObjectReference id="dor_V_30_day_form_submitted" dataObjectRef="do_V_30_day_form_submitted" name="V_30_day_form_submitted"/>
+    <dataInputAssociation id="dia_in_V_30_day_form_submitted_33f717">
+      <sourceRef>dor_V_30_day_form_submitted</sourceRef>
+      <targetRef>task_33f717fd</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_performance_concern_flag" name="V_performance_concern_flag"/>
+    <dataObjectReference id="dor_V_performance_concern_flag" dataObjectRef="do_V_performance_concern_flag" name="V_performance_concern_flag"/>
+    <dataOutputAssociation id="doa_out_V_performance_concern_flag_54ecd4">
+      <sourceRef>task_54ecd426</sourceRef>
+      <targetRef>dor_V_performance_concern_flag</targetRef>
+    </dataOutputAssociation>
+    <dataObject id="do_V_30_day_checkin_data" name="V_30_day_checkin_data"/>
+    <dataObjectReference id="dor_V_30_day_checkin_data" dataObjectRef="do_V_30_day_checkin_data" name="V_30_day_checkin_data"/>
+    <dataInputAssociation id="dia_in_V_30_day_checkin_data_54ecd4">
+      <sourceRef>dor_V_30_day_checkin_data</sourceRef>
+      <targetRef>task_54ecd426</targetRef>
+    </dataInputAssociation>
+    <dataInputAssociation id="dia_in_V_30_day_checkin_data_fcc4b9">
+      <sourceRef>dor_V_30_day_checkin_data</sourceRef>
+      <targetRef>task_fcc4b99c</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_deferral_processed" name="V_deferral_processed"/>
+    <dataObjectReference id="dor_V_deferral_processed" dataObjectRef="do_V_deferral_processed" name="V_deferral_processed"/>
+    <dataOutputAssociation id="doa_out_V_deferral_processed_cd88cc">
+      <sourceRef>task_cd88ccbe</sourceRef>
+      <targetRef>dor_V_deferral_processed</targetRef>
+    </dataOutputAssociation>
+    <dataObject id="do_V_deferral_days" name="V_deferral_days"/>
+    <dataObjectReference id="dor_V_deferral_days" dataObjectRef="do_V_deferral_days" name="V_deferral_days"/>
+    <dataInputAssociation id="dia_in_V_deferral_days_cd88cc">
+      <sourceRef>dor_V_deferral_days</sourceRef>
+      <targetRef>task_cd88ccbe</targetRef>
+    </dataInputAssociation>
+  </process>
+  <bpmndi:BPMNDiagram id="diagram_89ca2245">
+    <bpmndi:BPMNPlane id="plane_89ca2245" bpmnElement="process_a7582801-108_89ca2245">
+      <bpmndi:BPMNShape id="shape_bfc845bb" bpmnElement="start_bfc845bb">
+        <dc:Bounds x="50" y="50" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_d1ea2fc0" bpmnElement="task_d1ea2fc0">
+        <dc:Bounds x="230" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_97a38ebc" bpmnElement="task_97a38ebc">
+        <dc:Bounds x="410" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_4cd244ad" bpmnElement="task_4cd244ad">
+        <dc:Bounds x="590" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_441f64b2" bpmnElement="task_441f64b2">
+        <dc:Bounds x="770" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_d4316723" bpmnElement="task_d4316723">
+        <dc:Bounds x="950" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_2022adf9" bpmnElement="task_2022adf9">
+        <dc:Bounds x="1130" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_33f717fd" bpmnElement="task_33f717fd">
+        <dc:Bounds x="1310" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_54ecd426" bpmnElement="task_54ecd426">
+        <dc:Bounds x="1490" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_fcc4b99c" bpmnElement="task_fcc4b99c">
+        <dc:Bounds x="1670" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_cd88ccbe" bpmnElement="task_cd88ccbe">
+        <dc:Bounds x="1850" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_b6f892e8" bpmnElement="end_b6f892e8">
+        <dc:Bounds x="2030" y="50" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_075902bf" bpmnElement="boundary_075902bf">
+        <dc:Bounds x="50" y="190" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_58109b51" bpmnElement="boundary_58109b51">
+        <dc:Bounds x="50" y="330" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="edge_2bf12a6f" bpmnElement="flow_2bf12a6f">
+        <di:waypoint x="86" y="68.0"/>
+        <di:waypoint x="230" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_f27876bb" bpmnElement="flow_f27876bb">
+        <di:waypoint x="350" y="80.0"/>
+        <di:waypoint x="410" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_ce5b9d43" bpmnElement="flow_ce5b9d43">
+        <di:waypoint x="530" y="80.0"/>
+        <di:waypoint x="590" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_b9e2de27" bpmnElement="flow_b9e2de27">
+        <di:waypoint x="710" y="80.0"/>
+        <di:waypoint x="770" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_0a8d4444" bpmnElement="flow_0a8d4444">
+        <di:waypoint x="890" y="80.0"/>
+        <di:waypoint x="950" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_798b3039" bpmnElement="flow_798b3039">
+        <di:waypoint x="1070" y="80.0"/>
+        <di:waypoint x="1130" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_0bd0e552" bpmnElement="flow_0bd0e552">
+        <di:waypoint x="1250" y="80.0"/>
+        <di:waypoint x="1310" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_e8b10c93" bpmnElement="flow_e8b10c93">
+        <di:waypoint x="1430" y="80.0"/>
+        <di:waypoint x="1490" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_dcabdca4" bpmnElement="flow_dcabdca4">
+        <di:waypoint x="1610" y="80.0"/>
+        <di:waypoint x="1670" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_c215bb04" bpmnElement="flow_c215bb04">
+        <di:waypoint x="1790" y="80.0"/>
+        <di:waypoint x="1850" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_1adf9c2f" bpmnElement="flow_1adf9c2f">
+        <di:waypoint x="1970" y="80.0"/>
+        <di:waypoint x="2030" y="68.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_41920165" bpmnElement="flow_41920165">
+        <di:waypoint x="86" y="208.0"/>
+        <di:waypoint x="2030" y="68.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_f65a33cb" bpmnElement="flow_f65a33cb">
+        <di:waypoint x="86" y="348.0"/>
+        <di:waypoint x="2030" y="68.0"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

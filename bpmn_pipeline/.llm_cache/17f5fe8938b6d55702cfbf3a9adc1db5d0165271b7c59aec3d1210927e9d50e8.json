@@ -1,0 +1,1 @@
+{"result": {"gateway_type": "XOR", "branches": [{"condition_label": "Deferral requested", "condition_var": "V_deferral_intent", "condition_value": "true", "target_unit_id": "7f20fd26", "is_default": false}, {"condition_label": "No deferral", "condition_var": null, "condition_value": null, "target_unit_id": null, "is_default": true}]}, "input_tokens": 1030, "output_tokens": 411}

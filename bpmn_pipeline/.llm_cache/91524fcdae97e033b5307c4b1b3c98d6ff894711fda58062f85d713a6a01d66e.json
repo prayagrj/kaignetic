@@ -1,0 +1,1 @@
+{"result": {"gateway_type": "XOR", "branches": [{"condition_label": "Provision laptop, system accounts, and access credentials", "condition_var": null, "condition_value": null, "target_unit_id": "183cd984", "is_default": false}]}, "input_tokens": 688, "output_tokens": 315}

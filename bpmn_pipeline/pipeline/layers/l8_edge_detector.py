@@ -164,6 +164,9 @@ def run(job: Job) -> None:
             node_map[gw_nid].bpmn_type = BPMNNodeType.GATEWAY
             node_map[gw_nid].gateway_type = gw_type
 
+            # TASK 2: tag this gateway as DIVERGING
+            node_map[gw_nid].gateway_direction = "DIVERGING"
+
             gw_pos = ordered_node_ids.index(gw_nid) if gw_nid in ordered_node_ids else None
             next_nid = ordered_node_ids[gw_pos + 1] if gw_pos is not None and gw_pos + 1 < len(ordered_node_ids) else None
 
@@ -187,6 +190,9 @@ def run(job: Job) -> None:
                         e = _make_edge(job.job_id, gw_nid, target_nid)
                         e.label = branch.get("condition_label")
                         e.is_default = branch.get("is_default", False)
+                        # TASK 3: annotate with condition variable from LLM
+                        e.condition_variable = branch.get("condition_var")
+                        e.condition_value = branch.get("condition_value")
                         edges.append(e)
                         branch_target_nids.append(target_nid)
                         if target_nid == next_nid:
@@ -263,6 +269,10 @@ def run(job: Job) -> None:
                                 e.label = cr.ref_text
                                 edges.append(e)
 
+        # ── Phase 5a: Insert converging gateways ───────────────────────────────────
+        nodes, edges = _insert_converging_gateways(nodes, edges, job.job_id)
+        process.bpmn_nodes = nodes
+
         # ── Phase 5: Exception boundary edges → END ───────────────────────────────
         exception_node_map = process.__dict__.get("_block_to_exception_node", {})
         end_nid = end_id
@@ -270,6 +280,9 @@ def run(job: Job) -> None:
             if end_nid:
                 edges.append(_make_edge(job.job_id, exc_nid, end_nid))
 
+        # ── Phase 6: Prune trivial gateways (1-in / 1-out) ───────────────────────
+        nodes, edges = _prune_trivial_gateways(nodes, edges)
+        process.bpmn_nodes = nodes
         process.bpmn_edges = edges
 
 
@@ -291,6 +304,117 @@ def validate_gate(job: Job) -> None:
         if all_node_ids and (len(dead_ends) / len(all_node_ids)) >= 0.1:
             raise SoftGateFailure("L8_DEAD_END_NODES", f"Dead-end nodes >= 10% in {process.name}")
 
+
+def _prune_trivial_gateways(
+    nodes: list,
+    edges: list,
+) -> tuple[list, list]:
+    """
+    A gateway with exactly 1 incoming AND 1 outgoing edge is not branching.
+    These are typically over-classified DECISION blocks from L3.
+    Bypass the gateway: connect its predecessor directly to its successor.
+    Flag the removed node for review so its source block can be re-evaluated.
+    """
+    removed: set[str] = set()
+    new_edges = list(edges)
+
+    # Iterate until stable (cascades are unlikely but possible)
+    changed = True
+    while changed:
+        changed = False
+        for node in nodes:
+            if node.node_id in removed:
+                continue
+            if node.bpmn_type != BPMNNodeType.GATEWAY:
+                continue
+
+            outgoing = [e for e in new_edges if e.source_node_id == node.node_id]
+            incoming = [e for e in new_edges if e.target_node_id == node.node_id]
+
+            if len(outgoing) == 1 and len(incoming) == 1:
+                pred_edge = incoming[0]
+                succ_edge = outgoing[0]
+                bypass = _make_edge(node.job_id, pred_edge.source_node_id, succ_edge.target_node_id)
+                bypass.label = pred_edge.label or succ_edge.label
+                new_edges.append(bypass)
+                new_edges = [e for e in new_edges if e not in (pred_edge, succ_edge)]
+                removed.add(node.node_id)
+
+                # Flag the node for review (don't set it on the orphaned schema object —
+                # just mark it so L9 can see it if we accidentally keep it)
+                node.needs_review = True
+                node.review_reasons.append(
+                    "Gateway had only 1 outgoing branch — pruned and bypassed (L8)"
+                )
+                changed = True
+                break  # restart iteration since list changed
+
+    pruned_nodes = [n for n in nodes if n.node_id not in removed]
+    return pruned_nodes, new_edges
+
+
+def _insert_converging_gateways(
+    nodes: list,
+    edges: list,
+    job_id: str,
+) -> tuple[list, list]:
+    """
+    After diverging gateways are resolved, find any node that has >= 2 incoming
+    edges from different sources (a join point) and lacks an explicit CONVERGING
+    gateway upstream. Insert an XOR converging gateway to make the graph valid BPMN.
+
+    The inserted gateway is placed between the join node and all its predecessors.
+    """
+    # Build incoming-edge count map
+    incoming: dict[str, list] = {}
+    for e in edges:
+        incoming.setdefault(e.target_node_id, []).append(e)
+
+    node_map = {n.node_id: n for n in nodes}
+    new_nodes = list(nodes)
+    new_edges = list(edges)
+
+    for tgt_nid, inc_edges in list(incoming.items()):
+        tgt_node = node_map.get(tgt_nid)
+        if not tgt_node:
+            continue
+        # Only act on nodes that aren't already gateways and have >= 2 incoming flows
+        if tgt_node.bpmn_type == BPMNNodeType.GATEWAY:
+            continue
+        if tgt_node.bpmn_type == BPMNNodeType.END_EVENT:
+            continue
+        if len(inc_edges) < 2:
+            continue
+
+        # Check if all predecessors are from the same diverging gateway (already handled)
+        src_nids = {e.source_node_id for e in inc_edges}
+        all_from_same_gw = (len(src_nids) == 1 and
+                            node_map.get(next(iter(src_nids)), None) is not None and
+                            node_map[next(iter(src_nids))].bpmn_type == BPMNNodeType.GATEWAY)
+        if all_from_same_gw:
+            continue  # natural gateway → target pattern, no converging needed
+
+        # Insert a converging gateway
+        conv_id = f"cg_{str(uuid.uuid4())[:6]}"
+        conv_node = BPMNNode(
+            node_id=conv_id,
+            job_id=job_id,
+            bpmn_type=BPMNNodeType.GATEWAY,
+            gateway_type=GatewayType.XOR,
+            gateway_direction="CONVERGING",
+            label="",
+        )
+        new_nodes.append(conv_node)
+        node_map[conv_id] = conv_node
+
+        # Redirect all incoming edges to point at the converging gateway
+        for e in inc_edges:
+            e.target_node_id = conv_id
+
+        # Add a single edge from converging gateway → join target
+        new_edges.append(_make_edge(job_id, conv_id, tgt_nid))
+
+    return new_nodes, new_edges
 
 def _make_edge(job_id: str, src: str, tgt: str) -> BPMNEdge:
     return BPMNEdge(

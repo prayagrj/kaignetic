@@ -85,6 +85,29 @@ def _doc_title(blocks: list[Block]) -> str:
     return "Unknown SOP"
 
 
+# ── Section role classification ───────────────────────────────────────────────
+
+# Block types that carry contextual (non-executable) information
+_CONTEXT_TYPES = {BlockType.CONDITION, BlockType.NOTE, BlockType.ACTOR}
+
+
+def _classify_section_role(blocks: list[Block]) -> str:
+    """
+    Determine whether a section should be treated as:
+      - "process"  : has at least one STEP/DECISION/EXCEPTION → goes into a process
+      - "preamble" : has only context blocks (CONDITION/NOTE/ACTOR) → attached to next process
+      - "discard"  : empty or pure HEADER/UNKNOWN → dropped
+    """
+    has_executable = any(b.block_type in _ACTION_TYPES for b in blocks)
+    has_context = any(b.block_type in _CONTEXT_TYPES for b in blocks)
+
+    if has_executable:
+        return "process"
+    if has_context:
+        return "preamble"
+    return "discard"
+
+
 # ── Phase 1: heuristic pre-screening ─────────────────────────────────────────
 
 def _phase1_candidates(section_map: dict[str, list[Block]]) -> dict[str, list[Block]]:
@@ -160,8 +183,18 @@ def run(job: Job) -> None:
     # Build full section map (preserves document order)
     section_map = _build_section_map(job.blocks)
 
-    # Phase 1 — filter non-actionable sections
-    candidates = _phase1_candidates(section_map)
+    # Classify each section into roles (process / preamble / discard)
+    # Collect preamble sections to carry forward until we find a process section
+    candidates: dict[str, list[Block]] = {}   # process-role sections only
+    pending_preamble: list[Block] = []         # preamble blocks accumulated so far
+
+    for key, blocks in section_map.items():
+        role = _classify_section_role(blocks)
+        if role == "process":
+            candidates[key] = blocks
+        elif role == "preamble":
+            pending_preamble.extend(blocks)
+        # "discard" → ignored
 
     if not candidates:
         # Entire document is preamble — fall back to a single process with all blocks
@@ -170,6 +203,13 @@ def run(job: Job) -> None:
 
     # Phase 2 — LLM semantic grouping
     groupings = _phase2_llm_grouping(candidates, job)
+
+    # Helper: attach accumulated preamble to a process model
+    def _attach_preamble(proc: ProcessModel, accumulated: list[Block]) -> None:
+        proc.preamble.extend(accumulated)
+
+    # Build processes and distribute preamble sections to them
+    created_processes: list[ProcessModel] = []
 
     if groupings:
         # Build ProcessModels from LLM groupings
@@ -180,18 +220,28 @@ def run(job: Job) -> None:
                 merged_blocks.extend(candidates.get(key, []))
                 assigned_keys.add(key)
             if merged_blocks:
-                job.processes.append(_make_process(group["process_name"], merged_blocks))
+                proc = _make_process(group["process_name"], merged_blocks)
+                created_processes.append(proc)
 
         # Safety: any candidate key not assigned by LLM gets its own process
         for key, blocks in candidates.items():
             if key not in assigned_keys:
-                job.processes.append(_make_process(key, blocks))
+                proc = _make_process(key, blocks)
+                created_processes.append(proc)
 
     else:
         # Fallback — one process per surviving candidate (Phase 1 result)
         print("[L3b] LLM grouping unavailable — using heuristic fallback")
         for key, blocks in candidates.items():
-            job.processes.append(_make_process(key, blocks))
+            proc = _make_process(key, blocks)
+            created_processes.append(proc)
+
+    # Attach accumulated preamble to the first process; any preamble after a
+    # process boundary gets attached to the next one.
+    for proc in created_processes:
+        _attach_preamble(proc, pending_preamble)
+        pending_preamble = []  # consumed — reset for next process
+        job.processes.append(proc)
 
 
 # ── Gate ──────────────────────────────────────────────────────────────────────

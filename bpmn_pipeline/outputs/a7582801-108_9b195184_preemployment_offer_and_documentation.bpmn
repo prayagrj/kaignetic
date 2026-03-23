@@ -1,0 +1,451 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="definitions_a7582801-108_9b195184" targetNamespace="http://bpmn.io/schema/bpmn">
+  <process id="process_a7582801-108_9b195184" isExecutable="false">
+    <laneSet id="laneSet_1">
+      <lane id="lane_hr_business_partner" name="HR Business Partner">
+        <flowNodeRef>task_825c81ea</flowNodeRef>
+        <flowNodeRef>gateway_ec5ec9a6</flowNodeRef>
+        <flowNodeRef>gateway_aa5fa925</flowNodeRef>
+        <flowNodeRef>gateway_5fc69d45</flowNodeRef>
+        <flowNodeRef>subprocess_25128c06</flowNodeRef>
+        <flowNodeRef>task_75faa0d8</flowNodeRef>
+        <flowNodeRef>gateway_022609e6</flowNodeRef>
+        <flowNodeRef>task_bdaeffe5</flowNodeRef>
+        <flowNodeRef>task_d45d9add</flowNodeRef>
+        <flowNodeRef>task_e0b5b4f0</flowNodeRef>
+        <flowNodeRef>task_abbe8bca</flowNodeRef>
+        <flowNodeRef>gateway_606be339</flowNodeRef>
+        <flowNodeRef>task_162eeb16</flowNodeRef>
+        <flowNodeRef>gateway_a3f82a58</flowNodeRef>
+      </lane>
+      <lane id="lane_employee" name="Employee">
+        <flowNodeRef>task_87f0489d</flowNodeRef>
+      </lane>
+      <lane id="lane_it_helpdesk" name="IT Helpdesk">
+        <flowNodeRef>gateway_e9fc50e1</flowNodeRef>
+        <flowNodeRef>task_c3f53bd0</flowNodeRef>
+        <flowNodeRef>gateway_91816d63</flowNodeRef>
+      </lane>
+    </laneSet>
+    <startEvent id="start_fe9030f1" name="Start"/>
+    <userTask id="task_825c81ea" name="send offer letter"/>
+    <exclusiveGateway id="gateway_ec5ec9a6" name="track offer acceptance"/>
+    <exclusiveGateway id="gateway_aa5fa925" name="evaluate offer response timeliness"/>
+    <exclusiveGateway id="gateway_5fc69d45" name="evaluate candidate offer decision"/>
+    <subProcess id="subprocess_25128c06" name="evaluate candidate offer decision"/>
+    <userTask id="task_75faa0d8" name="share pre‑joining document checklist via…"/>
+    <userTask id="task_87f0489d" name="submit all required documents through HR…"/>
+    <exclusiveGateway id="gateway_022609e6" name="determine completeness of submitted documents"/>
+    <userTask id="task_bdaeffe5" name="determine if escalation is needed after 2…"/>
+    <userTask id="task_d45d9add" name="escalate to HR Manager for decision on defer…"/>
+    <userTask id="task_e0b5b4f0" name="conduct verification of employment history,…"/>
+    <userTask id="task_abbe8bca" name="receive verification report from BGV agency"/>
+    <exclusiveGateway id="gateway_606be339" name="evaluate BGV report to determine status…"/>
+    <userTask id="task_162eeb16" name="raise IT request"/>
+    <exclusiveGateway id="gateway_e9fc50e1" name="review IT request and determine…"/>
+    <userTask id="task_c3f53bd0" name="ensure IT resources are ready by Day 0"/>
+    <exclusiveGateway id="gateway_91816d63" name="notify HR Business Partner that IT setup is…"/>
+    <exclusiveGateway id="gateway_a3f82a58" name="decide whether to defer joining date or…"/>
+    <endEvent id="end_083e1040" name="End"/>
+    <boundaryEvent id="boundary_ced77fc8" name="If documents remain incomplete after 2 business days,">
+      <errorEventDefinition/>
+    </boundaryEvent>
+    <sequenceFlow id="flow_0dda294c" sourceRef="start_fe9030f1" targetRef="task_825c81ea"/>
+    <sequenceFlow id="flow_6c21f900" sourceRef="task_825c81ea" targetRef="gateway_ec5ec9a6"/>
+    <sequenceFlow id="flow_a8cef595" sourceRef="task_75faa0d8" targetRef="task_87f0489d"/>
+    <sequenceFlow id="flow_dfadf2d3" sourceRef="task_87f0489d" targetRef="gateway_022609e6"/>
+    <sequenceFlow id="flow_1d56e136" sourceRef="task_bdaeffe5" targetRef="task_d45d9add"/>
+    <sequenceFlow id="flow_3e2f9549" sourceRef="task_e0b5b4f0" targetRef="task_abbe8bca"/>
+    <sequenceFlow id="flow_d61ee6e0" sourceRef="task_abbe8bca" targetRef="gateway_606be339"/>
+    <sequenceFlow id="flow_59b2df53" sourceRef="task_162eeb16" targetRef="gateway_e9fc50e1"/>
+    <sequenceFlow id="flow_724b9f7f" sourceRef="task_c3f53bd0" targetRef="gateway_91816d63"/>
+    <sequenceFlow id="flow_5e714f34" sourceRef="gateway_a3f82a58" targetRef="end_083e1040"/>
+    <sequenceFlow id="flow_6a95c04a" sourceRef="task_e0b5b4f0" targetRef="gateway_606be339"/>
+    <sequenceFlow id="flow_000b505f" sourceRef="gateway_ec5ec9a6" targetRef="gateway_aa5fa925" name="Candidate did not respond within 5 business days – send reminder email">
+      <conditionExpression>${V_follow_up_needed} == true</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_a060c0fd" sourceRef="gateway_ec5ec9a6" targetRef="gateway_5fc69d45" name="Candidate responded within 5 business days – proceed with offer decision">
+      <conditionExpression>${V_follow_up_needed} == false</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_5e424d1e" sourceRef="gateway_5fc69d45" targetRef="subprocess_25128c06" name="Candidate declines offer">
+      <conditionExpression>${V_offer_response_status} == declined</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_5b3f8043" sourceRef="gateway_5fc69d45" targetRef="subprocess_25128c06" name="Candidate accepts offer" isDefault="true"/>
+    <sequenceFlow id="flow_dfa0654b" sourceRef="subprocess_25128c06" targetRef="subprocess_25128c06" name="Candidate accepts the offer">
+      <conditionExpression>${V_offer_response_status} == true</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_ec696039" sourceRef="subprocess_25128c06" targetRef="task_75faa0d8" name="Candidate does not accept the offer">
+      <conditionExpression>${V_offer_response_status} == false</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_f9d9f465" sourceRef="gateway_022609e6" targetRef="task_e0b5b4f0" name="Documents complete">
+      <conditionExpression>${V_documents_complete} == true</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_fb256810" sourceRef="gateway_606be339" targetRef="task_162eeb16" name="BGV report is clear">
+      <conditionExpression>${V_bgv_status} == clear</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_5a41c601" sourceRef="gateway_606be339" targetRef="task_162eeb16" name="BGV report flags a discrepancy">
+      <conditionExpression>${V_bgv_status} == discrepancy</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_10621d51" sourceRef="gateway_606be339" targetRef="task_162eeb16" name="BGV report delayed beyond 10 business days">
+      <conditionExpression>${V_bgv_status} == delayed</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_48845f49" sourceRef="gateway_e9fc50e1" targetRef="task_c3f53bd0" name="Standard configuration">
+      <conditionExpression>${V_is_standard_config} == true</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_129d8fda" sourceRef="gateway_e9fc50e1" targetRef="task_c3f53bd0" name="Custom configuration">
+      <conditionExpression>${V_is_standard_config} == false</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_ab269d2b" sourceRef="gateway_91816d63" targetRef="gateway_a3f82a58" name="Defer joining date">
+      <conditionExpression>${V_joining_date_decision} == defer</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_eb17234f" sourceRef="gateway_91816d63" targetRef="gateway_a3f82a58" name="Proceed with temporary setup">
+      <conditionExpression>${V_joining_date_decision} == temporary</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_d183a7eb" sourceRef="boundary_ced77fc8" targetRef="end_083e1040"/>
+    <sequenceFlow id="flow_03e020fb" sourceRef="gateway_022609e6" targetRef="task_bdaeffe5" name="Documents incomplete or invalid"/>
+    <textAnnotation id="ann_aa5fa925">
+      <text>⚠ Review: Gateway has at most one outgoing sequence flow (L9)</text>
+    </textAnnotation>
+    <association id="assoc_aa5fa925" sourceRef="gateway_aa5fa925" targetRef="ann_aa5fa925" associationDirection="None"/>
+    <textAnnotation id="ann_25128c06">
+      <text>⚠ Review: Self-loop cycle collapsed to subprocess (L9)</text>
+    </textAnnotation>
+    <association id="assoc_25128c06" sourceRef="subprocess_25128c06" targetRef="ann_25128c06" associationDirection="None"/>
+    <textAnnotation id="ann_a3f82a58">
+      <text>⚠ Review: Gateway has at most one outgoing sequence flow (L9)</text>
+    </textAnnotation>
+    <association id="assoc_a3f82a58" sourceRef="gateway_a3f82a58" targetRef="ann_a3f82a58" associationDirection="None"/>
+    <dataObject id="do_V_offer_letter_sent" name="V_offer_letter_sent"/>
+    <dataObjectReference id="dor_V_offer_letter_sent" dataObjectRef="do_V_offer_letter_sent" name="V_offer_letter_sent"/>
+    <dataOutputAssociation id="doa_out_V_offer_letter_sent_825c81">
+      <sourceRef>task_825c81ea</sourceRef>
+      <targetRef>dor_V_offer_letter_sent</targetRef>
+    </dataOutputAssociation>
+    <dataObject id="do_V_candidate_id" name="V_candidate_id"/>
+    <dataObjectReference id="dor_V_candidate_id" dataObjectRef="do_V_candidate_id" name="V_candidate_id"/>
+    <dataInputAssociation id="dia_in_V_candidate_id_825c81">
+      <sourceRef>dor_V_candidate_id</sourceRef>
+      <targetRef>task_825c81ea</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_verbal_offer_confirmed" name="V_verbal_offer_confirmed"/>
+    <dataObjectReference id="dor_V_verbal_offer_confirmed" dataObjectRef="do_V_verbal_offer_confirmed" name="V_verbal_offer_confirmed"/>
+    <dataInputAssociation id="dia_in_V_verbal_offer_confirmed_825c81">
+      <sourceRef>dor_V_verbal_offer_confirmed</sourceRef>
+      <targetRef>task_825c81ea</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_offer_response_status" name="V_offer_response_status"/>
+    <dataObjectReference id="dor_V_offer_response_status" dataObjectRef="do_V_offer_response_status" name="V_offer_response_status"/>
+    <dataObject id="do_V_follow_up_needed" name="V_follow_up_needed"/>
+    <dataObjectReference id="dor_V_follow_up_needed" dataObjectRef="do_V_follow_up_needed" name="V_follow_up_needed"/>
+    <dataObject id="do_V_position_closed" name="V_position_closed"/>
+    <dataObjectReference id="dor_V_position_closed" dataObjectRef="do_V_position_closed" name="V_position_closed"/>
+    <dataObject id="do_V_bg_verification_initiated" name="V_bg_verification_initiated"/>
+    <dataObjectReference id="dor_V_bg_verification_initiated" dataObjectRef="do_V_bg_verification_initiated" name="V_bg_verification_initiated"/>
+    <dataObject id="do_V_checklist_sent" name="V_checklist_sent"/>
+    <dataObjectReference id="dor_V_checklist_sent" dataObjectRef="do_V_checklist_sent" name="V_checklist_sent"/>
+    <dataOutputAssociation id="doa_out_V_checklist_sent_75faa0">
+      <sourceRef>task_75faa0d8</sourceRef>
+      <targetRef>dor_V_checklist_sent</targetRef>
+    </dataOutputAssociation>
+    <dataInputAssociation id="dia_in_V_checklist_sent_87f048">
+      <sourceRef>dor_V_checklist_sent</sourceRef>
+      <targetRef>task_87f0489d</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_submitted_documents" name="V_submitted_documents"/>
+    <dataObjectReference id="dor_V_submitted_documents" dataObjectRef="do_V_submitted_documents" name="V_submitted_documents"/>
+    <dataOutputAssociation id="doa_out_V_submitted_documents_87f048">
+      <sourceRef>task_87f0489d</sourceRef>
+      <targetRef>dor_V_submitted_documents</targetRef>
+    </dataOutputAssociation>
+    <dataObject id="do_V_documents_complete" name="V_documents_complete"/>
+    <dataObjectReference id="dor_V_documents_complete" dataObjectRef="do_V_documents_complete" name="V_documents_complete"/>
+    <dataInputAssociation id="dia_in_V_documents_complete_bdaeff">
+      <sourceRef>dor_V_documents_complete</sourceRef>
+      <targetRef>task_bdaeffe5</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_deficiency_notice_sent" name="V_deficiency_notice_sent"/>
+    <dataObjectReference id="dor_V_deficiency_notice_sent" dataObjectRef="do_V_deficiency_notice_sent" name="V_deficiency_notice_sent"/>
+    <dataObject id="do_V_escalation_needed" name="V_escalation_needed"/>
+    <dataObjectReference id="dor_V_escalation_needed" dataObjectRef="do_V_escalation_needed" name="V_escalation_needed"/>
+    <dataOutputAssociation id="doa_out_V_escalation_needed_bdaeff">
+      <sourceRef>task_bdaeffe5</sourceRef>
+      <targetRef>dor_V_escalation_needed</targetRef>
+    </dataOutputAssociation>
+    <dataInputAssociation id="dia_in_V_escalation_needed_d45d9a">
+      <sourceRef>dor_V_escalation_needed</sourceRef>
+      <targetRef>task_d45d9add</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_escalated_to_hr_manager" name="V_escalated_to_hr_manager"/>
+    <dataObjectReference id="dor_V_escalated_to_hr_manager" dataObjectRef="do_V_escalated_to_hr_manager" name="V_escalated_to_hr_manager"/>
+    <dataOutputAssociation id="doa_out_V_escalated_to_hr_manager_d45d9a">
+      <sourceRef>task_d45d9add</sourceRef>
+      <targetRef>dor_V_escalated_to_hr_manager</targetRef>
+    </dataOutputAssociation>
+    <dataObject id="do_V_bgv_report" name="V_bgv_report"/>
+    <dataObjectReference id="dor_V_bgv_report" dataObjectRef="do_V_bgv_report" name="V_bgv_report"/>
+    <dataOutputAssociation id="doa_out_V_bgv_report_e0b5b4">
+      <sourceRef>task_e0b5b4f0</sourceRef>
+      <targetRef>dor_V_bgv_report</targetRef>
+    </dataOutputAssociation>
+    <dataInputAssociation id="dia_in_V_bgv_report_abbe8b">
+      <sourceRef>dor_V_bgv_report</sourceRef>
+      <targetRef>task_abbe8bca</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_candidate_details" name="V_candidate_details"/>
+    <dataObjectReference id="dor_V_candidate_details" dataObjectRef="do_V_candidate_details" name="V_candidate_details"/>
+    <dataInputAssociation id="dia_in_V_candidate_details_e0b5b4">
+      <sourceRef>dor_V_candidate_details</sourceRef>
+      <targetRef>task_e0b5b4f0</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_bgv_report_received" name="V_bgv_report_received"/>
+    <dataObjectReference id="dor_V_bgv_report_received" dataObjectRef="do_V_bgv_report_received" name="V_bgv_report_received"/>
+    <dataOutputAssociation id="doa_out_V_bgv_report_received_abbe8b">
+      <sourceRef>task_abbe8bca</sourceRef>
+      <targetRef>dor_V_bgv_report_received</targetRef>
+    </dataOutputAssociation>
+    <dataObject id="do_V_bgv_status" name="V_bgv_status"/>
+    <dataObjectReference id="dor_V_bgv_status" dataObjectRef="do_V_bgv_status" name="V_bgv_status"/>
+    <dataObject id="do_V_it_request_id" name="V_it_request_id"/>
+    <dataObjectReference id="dor_V_it_request_id" dataObjectRef="do_V_it_request_id" name="V_it_request_id"/>
+    <dataOutputAssociation id="doa_out_V_it_request_id_162eeb">
+      <sourceRef>task_162eeb16</sourceRef>
+      <targetRef>dor_V_it_request_id</targetRef>
+    </dataOutputAssociation>
+    <dataInputAssociation id="dia_in_V_it_request_id_c3f53b">
+      <sourceRef>dor_V_it_request_id</sourceRef>
+      <targetRef>task_c3f53bd0</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_it_request" name="V_it_request"/>
+    <dataObjectReference id="dor_V_it_request" dataObjectRef="do_V_it_request" name="V_it_request"/>
+    <dataOutputAssociation id="doa_out_V_it_request_162eeb">
+      <sourceRef>task_162eeb16</sourceRef>
+      <targetRef>dor_V_it_request</targetRef>
+    </dataOutputAssociation>
+    <dataObject id="do_V_employee_name" name="V_employee_name"/>
+    <dataObjectReference id="dor_V_employee_name" dataObjectRef="do_V_employee_name" name="V_employee_name"/>
+    <dataInputAssociation id="dia_in_V_employee_name_162eeb">
+      <sourceRef>dor_V_employee_name</sourceRef>
+      <targetRef>task_162eeb16</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_joining_date" name="V_joining_date"/>
+    <dataObjectReference id="dor_V_joining_date" dataObjectRef="do_V_joining_date" name="V_joining_date"/>
+    <dataInputAssociation id="dia_in_V_joining_date_162eeb">
+      <sourceRef>dor_V_joining_date</sourceRef>
+      <targetRef>task_162eeb16</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_department" name="V_department"/>
+    <dataObjectReference id="dor_V_department" dataObjectRef="do_V_department" name="V_department"/>
+    <dataInputAssociation id="dia_in_V_department_162eeb">
+      <sourceRef>dor_V_department</sourceRef>
+      <targetRef>task_162eeb16</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_designation" name="V_designation"/>
+    <dataObjectReference id="dor_V_designation" dataObjectRef="do_V_designation" name="V_designation"/>
+    <dataInputAssociation id="dia_in_V_designation_162eeb">
+      <sourceRef>dor_V_designation</sourceRef>
+      <targetRef>task_162eeb16</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_software_access_list" name="V_software_access_list"/>
+    <dataObjectReference id="dor_V_software_access_list" dataObjectRef="do_V_software_access_list" name="V_software_access_list"/>
+    <dataInputAssociation id="dia_in_V_software_access_list_162eeb">
+      <sourceRef>dor_V_software_access_list</sourceRef>
+      <targetRef>task_162eeb16</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_is_standard_config" name="V_is_standard_config"/>
+    <dataObjectReference id="dor_V_is_standard_config" dataObjectRef="do_V_is_standard_config" name="V_is_standard_config"/>
+    <dataObject id="do_V_it_setup_ready" name="V_it_setup_ready"/>
+    <dataObjectReference id="dor_V_it_setup_ready" dataObjectRef="do_V_it_setup_ready" name="V_it_setup_ready"/>
+    <dataOutputAssociation id="doa_out_V_it_setup_ready_c3f53b">
+      <sourceRef>task_c3f53bd0</sourceRef>
+      <targetRef>dor_V_it_setup_ready</targetRef>
+    </dataOutputAssociation>
+    <dataObject id="do_V_setup_not_ready_notification" name="V_setup_not_ready_notification"/>
+    <dataObjectReference id="dor_V_setup_not_ready_notification" dataObjectRef="do_V_setup_not_ready_notification" name="V_setup_not_ready_notification"/>
+    <dataObject id="do_V_joining_date_decision" name="V_joining_date_decision"/>
+    <dataObjectReference id="dor_V_joining_date_decision" dataObjectRef="do_V_joining_date_decision" name="V_joining_date_decision"/>
+  </process>
+  <bpmndi:BPMNDiagram id="diagram_9b195184">
+    <bpmndi:BPMNPlane id="plane_9b195184" bpmnElement="process_a7582801-108_9b195184">
+      <bpmndi:BPMNShape id="shape_fe9030f1" bpmnElement="start_fe9030f1">
+        <dc:Bounds x="50" y="50" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_825c81ea" bpmnElement="task_825c81ea">
+        <dc:Bounds x="230" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_ec5ec9a6" bpmnElement="gateway_ec5ec9a6">
+        <dc:Bounds x="410" y="50" width="50" height="50"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_aa5fa925" bpmnElement="gateway_aa5fa925">
+        <dc:Bounds x="590" y="50" width="50" height="50"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_5fc69d45" bpmnElement="gateway_5fc69d45">
+        <dc:Bounds x="590" y="190" width="50" height="50"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_25128c06" bpmnElement="subprocess_25128c06">
+        <dc:Bounds x="4550" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_75faa0d8" bpmnElement="task_75faa0d8">
+        <dc:Bounds x="4730" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_87f0489d" bpmnElement="task_87f0489d">
+        <dc:Bounds x="4910" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_022609e6" bpmnElement="gateway_022609e6">
+        <dc:Bounds x="5090" y="50" width="50" height="50"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_bdaeffe5" bpmnElement="task_bdaeffe5">
+        <dc:Bounds x="5270" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_d45d9add" bpmnElement="task_d45d9add">
+        <dc:Bounds x="5450" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_e0b5b4f0" bpmnElement="task_e0b5b4f0">
+        <dc:Bounds x="5270" y="190" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_abbe8bca" bpmnElement="task_abbe8bca">
+        <dc:Bounds x="5450" y="190" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_606be339" bpmnElement="gateway_606be339">
+        <dc:Bounds x="5630" y="50" width="50" height="50"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_162eeb16" bpmnElement="task_162eeb16">
+        <dc:Bounds x="5810" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_e9fc50e1" bpmnElement="gateway_e9fc50e1">
+        <dc:Bounds x="5990" y="50" width="50" height="50"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_c3f53bd0" bpmnElement="task_c3f53bd0">
+        <dc:Bounds x="6170" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_91816d63" bpmnElement="gateway_91816d63">
+        <dc:Bounds x="6350" y="50" width="50" height="50"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_a3f82a58" bpmnElement="gateway_a3f82a58">
+        <dc:Bounds x="6530" y="50" width="50" height="50"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_083e1040" bpmnElement="end_083e1040">
+        <dc:Bounds x="6710" y="50" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_ced77fc8" bpmnElement="boundary_ced77fc8">
+        <dc:Bounds x="50" y="190" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_ann_aa5fa925" bpmnElement="ann_aa5fa925">
+        <dc:Bounds x="660" y="10" width="180" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_ann_25128c06" bpmnElement="ann_25128c06">
+        <dc:Bounds x="4690" y="10" width="180" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_ann_a3f82a58" bpmnElement="ann_a3f82a58">
+        <dc:Bounds x="6600" y="10" width="180" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="edge_0dda294c" bpmnElement="flow_0dda294c">
+        <di:waypoint x="86" y="68.0"/>
+        <di:waypoint x="230" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_6c21f900" bpmnElement="flow_6c21f900">
+        <di:waypoint x="350" y="80.0"/>
+        <di:waypoint x="410" y="75.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_a8cef595" bpmnElement="flow_a8cef595">
+        <di:waypoint x="4850" y="80.0"/>
+        <di:waypoint x="4910" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_dfadf2d3" bpmnElement="flow_dfadf2d3">
+        <di:waypoint x="5030" y="80.0"/>
+        <di:waypoint x="5090" y="75.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_1d56e136" bpmnElement="flow_1d56e136">
+        <di:waypoint x="5390" y="80.0"/>
+        <di:waypoint x="5450" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_3e2f9549" bpmnElement="flow_3e2f9549">
+        <di:waypoint x="5390" y="220.0"/>
+        <di:waypoint x="5450" y="220.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_d61ee6e0" bpmnElement="flow_d61ee6e0">
+        <di:waypoint x="5570" y="220.0"/>
+        <di:waypoint x="5630" y="75.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_59b2df53" bpmnElement="flow_59b2df53">
+        <di:waypoint x="5930" y="80.0"/>
+        <di:waypoint x="5990" y="75.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_724b9f7f" bpmnElement="flow_724b9f7f">
+        <di:waypoint x="6290" y="80.0"/>
+        <di:waypoint x="6350" y="75.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_5e714f34" bpmnElement="flow_5e714f34">
+        <di:waypoint x="6580" y="75.0"/>
+        <di:waypoint x="6710" y="68.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_6a95c04a" bpmnElement="flow_6a95c04a">
+        <di:waypoint x="5390" y="220.0"/>
+        <di:waypoint x="5630" y="75.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_000b505f" bpmnElement="flow_000b505f">
+        <di:waypoint x="460" y="75.0"/>
+        <di:waypoint x="590" y="75.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_a060c0fd" bpmnElement="flow_a060c0fd">
+        <di:waypoint x="460" y="75.0"/>
+        <di:waypoint x="590" y="215.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_5e424d1e" bpmnElement="flow_5e424d1e">
+        <di:waypoint x="640" y="215.0"/>
+        <di:waypoint x="4550" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_5b3f8043" bpmnElement="flow_5b3f8043">
+        <di:waypoint x="640" y="215.0"/>
+        <di:waypoint x="4550" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_dfa0654b" bpmnElement="flow_dfa0654b">
+        <di:waypoint x="4670" y="80.0"/>
+        <di:waypoint x="4550" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_ec696039" bpmnElement="flow_ec696039">
+        <di:waypoint x="4670" y="80.0"/>
+        <di:waypoint x="4730" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_f9d9f465" bpmnElement="flow_f9d9f465">
+        <di:waypoint x="5140" y="75.0"/>
+        <di:waypoint x="5270" y="220.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_fb256810" bpmnElement="flow_fb256810">
+        <di:waypoint x="5680" y="75.0"/>
+        <di:waypoint x="5810" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_5a41c601" bpmnElement="flow_5a41c601">
+        <di:waypoint x="5680" y="75.0"/>
+        <di:waypoint x="5810" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_10621d51" bpmnElement="flow_10621d51">
+        <di:waypoint x="5680" y="75.0"/>
+        <di:waypoint x="5810" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_48845f49" bpmnElement="flow_48845f49">
+        <di:waypoint x="6040" y="75.0"/>
+        <di:waypoint x="6170" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_129d8fda" bpmnElement="flow_129d8fda">
+        <di:waypoint x="6040" y="75.0"/>
+        <di:waypoint x="6170" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_ab269d2b" bpmnElement="flow_ab269d2b">
+        <di:waypoint x="6400" y="75.0"/>
+        <di:waypoint x="6530" y="75.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_eb17234f" bpmnElement="flow_eb17234f">
+        <di:waypoint x="6400" y="75.0"/>
+        <di:waypoint x="6530" y="75.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_d183a7eb" bpmnElement="flow_d183a7eb">
+        <di:waypoint x="86" y="208.0"/>
+        <di:waypoint x="6710" y="68.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_03e020fb" bpmnElement="flow_03e020fb">
+        <di:waypoint x="5140" y="75.0"/>
+        <di:waypoint x="5270" y="80.0"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

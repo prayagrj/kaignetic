@@ -137,6 +137,9 @@ Valid actors:
 
 Section: {section_context}
 
+Process context (pre-conditions, scope — use this to resolve ambiguity):
+{preamble_context}
+
 Known variables produced so far (reuse names for the same data):
 {known_vars_json}
 

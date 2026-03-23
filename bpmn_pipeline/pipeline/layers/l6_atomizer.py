@@ -30,6 +30,13 @@ def run(job: Job) -> None:
         all_units: list[AtomicUnit] = []
         first_block_id = target_blocks[0].block_id
 
+        # Build preamble context summary for this process (pre-conditions, scope, etc.)
+        preamble_context = ""
+        if getattr(process, 'preamble', None):
+            preamble_texts = [b.raw_text.strip() for b in process.preamble if b.raw_text.strip()]
+            if preamble_texts:
+                preamble_context = "\n".join(preamble_texts[:10])  # cap at 10 lines
+
         # Group by section — context window will come from within the section
         groups: dict[str, list] = {}
         for b in target_blocks:
@@ -91,6 +98,7 @@ def run(job: Job) -> None:
                         known_vars_json=json.dumps(known_vars, separators=(',', ':')),
                         context_blocks_text=context_blocks_text,
                         target_blocks_text=target_blocks_text,
+                        preamble_context=preamble_context or "None",
                     ),
                 )
 

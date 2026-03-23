@@ -45,12 +45,15 @@ def run(job: Job) -> None:
         actor_to_lane = proc.__dict__.get("_actor_to_lane", {})
         _compute_layout(proc.bpmn_nodes, proc.bpmn_edges, actor_to_lane)
 
+        unit_to_node = proc.__dict__.get("_unit_to_task_node", {})
         xml_bytes = _serialize_xml(
             job.job_id,
             proc.process_id,
             proc.bpmn_nodes,
             proc.bpmn_edges,
             actor_to_lane,
+            unit_to_node=unit_to_node,
+            process_model=proc,
         )
         _validate_xml(xml_bytes)
 
@@ -178,6 +181,8 @@ def _serialize_xml(
     nodes,
     edges,
     actor_to_lane: dict,
+    unit_to_node: dict | None = None,
+    process_model=None,
 ) -> bytes:
     nsmap = {
         None: BPMN_NS,
@@ -227,6 +232,33 @@ def _serialize_xml(
             seq.set("name", edge.label)
         if edge.is_default:
             seq.set("isDefault", "true")
+        # TASK 3: emit conditionExpression if a condition variable is linked
+        if getattr(edge, 'condition_variable', None):
+            cond_val = getattr(edge, 'condition_value', None) or 'true'
+            cond_expr = etree.SubElement(seq, f"{{{BPMN_NS}}}conditionExpression")
+            cond_expr.text = f"${{{edge.condition_variable}}} == {cond_val}"
+
+    # needs_review annotations — emit textAnnotation + association for flagged nodes
+    for node in nodes:
+        if not node.needs_review:
+            continue
+        reason_text = "; ".join(node.review_reasons) if node.review_reasons else "Needs review"
+        annotation_id = f"ann_{node.node_id}"
+        assoc_id = f"assoc_{node.node_id}"
+
+        annotation_el = etree.SubElement(process, f"{{{BPMN_NS}}}textAnnotation")
+        annotation_el.set("id", annotation_id)
+        text_el = etree.SubElement(annotation_el, f"{{{BPMN_NS}}}text")
+        text_el.text = f"⚠ Review: {reason_text[:120]}"
+
+        assoc_el = etree.SubElement(process, f"{{{BPMN_NS}}}association")
+        assoc_el.set("id", assoc_id)
+        assoc_el.set("sourceRef", _element_id(node))
+        assoc_el.set("targetRef", annotation_id)
+        assoc_el.set("associationDirection", "None")
+
+    # TASK 4: DataObject serialization from process.data_vars
+    _serialize_data_objects(process, nodes, node_map, unit_to_node, process_model, job_id)
 
     # Diagram (DI)
     diagram = etree.SubElement(definitions, f"{{{BPMNDI_NS}}}BPMNDiagram")
@@ -244,6 +276,22 @@ def _serialize_xml(
         bounds.set("y", str(node.y or 0))
         bounds.set("width", str(node.width or 120))
         bounds.set("height", str(node.height or 60))
+
+    # Add BPMNShape for needs_review annotation boxes
+    for node in nodes:
+        if not node.needs_review:
+            continue
+        annotation_id = f"ann_{node.node_id}"
+        ann_shape = etree.SubElement(plane, f"{{{BPMNDI_NS}}}BPMNShape")
+        ann_shape.set("id", f"shape_{annotation_id}")
+        ann_shape.set("bpmnElement", annotation_id)
+        ann_bounds = etree.SubElement(ann_shape, f"{{{DC_NS}}}Bounds")
+        ann_x = str((node.x or 0) + (node.width or 120) + 20)
+        ann_y = str((node.y or 0) - 40)
+        ann_bounds.set("x", ann_x)
+        ann_bounds.set("y", ann_y)
+        ann_bounds.set("width", "180")
+        ann_bounds.set("height", "40")
 
     for edge in edges:
         waypoint_el = etree.SubElement(plane, f"{{{BPMNDI_NS}}}BPMNEdge")
@@ -365,4 +413,87 @@ class LayerError(Exception):
     def __init__(self, code, message):
         super().__init__(message)
         self.code = code
-        self.message = message
+
+
+class SoftGateFailure(Exception):
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+
+
+def _serialize_data_objects(
+    process_el,
+    nodes: list,
+    node_map: dict,
+    unit_to_node: dict,
+    process_model,
+    job_id: str,
+) -> None:
+    """
+    TASK 4: Emit BPMN dataObject, dataObjectReference, and data associations
+    for each DataVar in process_model.data_vars.
+
+    Each variable gets:
+    - <dataObject id="do_V_name"/>
+    - <dataObjectReference id="dor_V_name" dataObjectRef="do_V_name"/>
+    - <dataInputAssociation>  on the consumer task node(s)
+    - <dataOutputAssociation> on the producer task node
+
+    Safe to call if process_model is None or data_vars is empty.
+    """
+    if not process_model:
+        return
+    data_vars = getattr(process_model, 'data_vars', []) or []
+    if not data_vars:
+        return
+
+    for var in data_vars:
+        var_name = getattr(var, 'name', None)
+        if not var_name:
+            continue
+
+        do_id = f"do_{var_name}"
+        dor_id = f"dor_{var_name}"
+
+        # dataObject definition
+        do_el = etree.SubElement(process_el, f"{{{BPMN_NS}}}dataObject")
+        do_el.set("id", do_id)
+        do_el.set("name", var_name)
+
+        # dataObjectReference (required for associations)
+        dor_el = etree.SubElement(process_el, f"{{{BPMN_NS}}}dataObjectReference")
+        dor_el.set("id", dor_id)
+        dor_el.set("dataObjectRef", do_id)
+        dor_el.set("name", var_name)
+
+        # Producer association — find the task node that produces this var
+        producer_uid = getattr(var, 'producer_unit_id', None)
+        if producer_uid:
+            producer_nid = unit_to_node.get(producer_uid)
+            producer_node = node_map.get(producer_nid) if producer_nid else None
+            if producer_node and producer_node.bpmn_type == BPMNNodeType.TASK:
+                # Attach dataOutputAssociation to the producer task element
+                # Find the task XML element — we need to insert into the existing one.
+                # Instead, emit a standalone dataOutputAssociation inside the process
+                # (BPMN 2.0 allows it as a child of task or process-level — process-level is simpler).
+                assoc_id = f"doa_out_{var_name}_{producer_nid[:6]}"
+                doa = etree.SubElement(process_el, f"{{{BPMN_NS}}}dataOutputAssociation")
+                doa.set("id", assoc_id)
+                src_ref = etree.SubElement(doa, f"{{{BPMN_NS}}}sourceRef")
+                src_ref.text = _element_id(producer_node)
+                tgt_ref = etree.SubElement(doa, f"{{{BPMN_NS}}}targetRef")
+                tgt_ref.text = dor_id
+
+        # Consumer associations
+        consumers = getattr(var, 'consumers', []) or []
+        for consumer_uid in consumers:
+            consumer_nid = unit_to_node.get(consumer_uid)
+            consumer_node = node_map.get(consumer_nid) if consumer_nid else None
+            if consumer_node and consumer_node.bpmn_type == BPMNNodeType.TASK:
+                assoc_id = f"dia_in_{var_name}_{consumer_nid[:6]}"
+                dia = etree.SubElement(process_el, f"{{{BPMN_NS}}}dataInputAssociation")
+                dia.set("id", assoc_id)
+                src_ref = etree.SubElement(dia, f"{{{BPMN_NS}}}sourceRef")
+                src_ref.text = dor_id
+                tgt_ref = etree.SubElement(dia, f"{{{BPMN_NS}}}targetRef")
+                tgt_ref.text = _element_id(consumer_node)

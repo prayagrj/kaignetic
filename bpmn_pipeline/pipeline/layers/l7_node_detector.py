@@ -2,6 +2,15 @@
 
 One START_EVENT and one END_EVENT per ProcessModel; all tasks/gateways lie between them.
 """
+MAX_LABEL_LEN = 45
+
+
+def truncate_label(text: str, max_len: int = MAX_LABEL_LEN) -> str:
+    """Truncate at word boundary with ellipsis if text exceeds max_len."""
+    if len(text) <= max_len:
+        return text
+    truncated = text[:max_len].rsplit(" ", 1)[0]
+    return truncated + "\u2026"
 import uuid
 
 from models.schemas import BPMNNode, BPMNNodeType, BlockType, Job, ProcessModel
@@ -34,7 +43,7 @@ def _build_process_nodes(job: Job, process: ProcessModel) -> None:
             node_id=_nid(),
             job_id=job.job_id,
             unit_id=unit.unit_id,
-            label=unit.action[:80],
+            label=truncate_label(unit.action),
             actor=unit.actor,
         )
 

@@ -1,0 +1,1 @@
+{"result": [{"block_id": "e2cc31f1", "block_type": "ACTOR", "confidence": 0.7, "reasoning": "The table defines roles such as HRBP, Hiring Manager, and IT Helpdesk, which are party definitions, fitting the ACTOR type."}], "input_tokens": 421, "output_tokens": 309}

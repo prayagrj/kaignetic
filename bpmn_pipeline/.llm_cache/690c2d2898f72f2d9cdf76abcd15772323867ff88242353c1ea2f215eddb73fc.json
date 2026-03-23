@@ -1,0 +1,1 @@
+{"result": {"gateway_type": "XOR", "branches": [{"condition_label": "candidate accepts the offer", "condition_var": "V_candidate_accepted", "condition_value": "true", "target_unit_id": "a7485327", "is_default": false}]}, "input_tokens": 956, "output_tokens": 567}

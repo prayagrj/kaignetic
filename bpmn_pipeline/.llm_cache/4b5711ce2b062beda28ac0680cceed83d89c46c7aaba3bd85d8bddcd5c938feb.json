@@ -1,0 +1,1 @@
+{"result": [{"block_id": "bb10b423", "atomic_units": [{"sequence_in_block": 0, "action": "conduct_buddy_orientation_meeting", "actor": "Employee", "condition": null, "output": "V_buddy_orientation_completed", "is_terminal": false, "inputs": [], "outputs": ["V_buddy_orientation_completed"]}]}], "input_tokens": 646, "output_tokens": 472}

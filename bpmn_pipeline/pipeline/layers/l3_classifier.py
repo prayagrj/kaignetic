@@ -1,6 +1,8 @@
 """L3 — Block Classifier: heuristic-first, then LLM for genuinely ambiguous blocks."""
 import json
 import re
+from functools import lru_cache
+from typing import Optional
 
 from llm.client import LLMClient
 from llm.prompts import CLASSIFY_BLOCKS_BATCH_SYSTEM, CLASSIFY_BLOCKS_BATCH_USER
@@ -9,7 +11,72 @@ from pipeline.utils.chunker import chunk_items
 from pipeline.utils.tree_builder import build_document_tree
 import config
 
+# DECISION_INLINE regex kept as a fast pre-screen (no spaCy needed for obvious cases)
 from pipeline.utils.decision_patterns import DECISION_INLINE
+
+
+# ── spaCy lazy loader ────────────────────────────────────────────────────────
+
+@lru_cache(maxsize=1)
+def _get_nlp():
+    """
+    Load spaCy 'en_core_web_sm' once. Returns None if spaCy is not installed
+    or the model is missing — the pipeline degrades gracefully to regex.
+    """
+    try:
+        import spacy  # noqa: PLC0415
+        return spacy.load("en_core_web_sm", disable=["ner", "lemmatizer"])
+    except Exception:  # ImportError, OSError (model missing), etc.
+        return None
+
+
+# spaCy-based dependency signals for DECISION classification
+_MODAL_DECISION_VERBS = {"check", "determine", "verify", "assess", "confirm", "evaluate", "decide"}
+_CONDITIONAL_DEPS = {"mark", "advmod"}   # subordinating conjunctions + conditional adverbs
+_CONDITIONAL_LEMMAS = {"if", "whether", "depending", "based", "unless", "otherwise", "when"}
+
+
+def _spacy_is_decision(text: str, nlp) -> bool:
+    """
+    Return True if spaCy dependency parse finds a conditional structure:
+      - A token whose lemma is in _CONDITIONAL_LEMMAS and dep_ in _CONDITIONAL_DEPS
+      - OR a modal verb (MD POS) paired with a decision-action root
+    Much more precise than a raw regex on 'if|depending|...'.
+    """
+    doc = nlp(text[:300])  # cap to keep latency low
+    for token in doc:
+        # Explicit conditional subordinators: "if", "whether", "unless", ...
+        if token.lemma_.lower() in _CONDITIONAL_LEMMAS and token.dep_ in _CONDITIONAL_DEPS:
+            return True
+        # Modal + decision-action root: "should check", "must verify"
+        if token.pos_ == "MD" and token.head.lemma_.lower() in _MODAL_DECISION_VERBS:
+            return True
+    return False
+
+
+def _tag_blocks_with_spacy(blocks: list) -> dict:
+    """
+    Run spaCy nlp.pipe() over all block texts in one batch pass.
+    Returns a dict { block_id: bool (is_decision) }.
+    Falls back to empty dict if spaCy unavailable.
+    """
+    nlp = _get_nlp()
+    if nlp is None:
+        return {}
+
+    texts = [b.raw_text[:300] for b in blocks]
+    results: dict[str, bool] = {}
+    for b, doc in zip(blocks, nlp.pipe(texts, batch_size=64)):
+        is_decision = False
+        for token in doc:
+            if token.lemma_.lower() in _CONDITIONAL_LEMMAS and token.dep_ in _CONDITIONAL_DEPS:
+                is_decision = True
+                break
+            if token.pos_ == "MD" and token.head.lemma_.lower() in _MODAL_DECISION_VERBS:
+                is_decision = True
+                break
+        results[b.block_id] = is_decision
+    return results
 
 
 # ── Heading keywords that strongly imply a block type ────────────────────────
@@ -69,20 +136,36 @@ def run(job: Job) -> None:
         if b.block_type != BlockType.HEADER and b.raw_text.strip()
     ]
 
+    # Pre-pass: spaCy batch tagging for DECISION identification
+    # This runs one tokenisation pass over all blocks — O(n) not O(n * LLM calls)
+    spacy_decisions = _tag_blocks_with_spacy(all_content_blocks)
+
     for b in all_content_blocks:
         result = _heuristic_classify(b)
         if result is not None:
             btype, conf = result
             # DECISION heuristic still gets LLM confirmation (lower threshold)
             if btype == BlockType.DECISION and conf < 0.85:
-                b._heuristic_hint = btype  # store hint for LLM prompt
-                ambiguous_blocks.append(b)
+                # Upgrade confidence if spaCy also agrees
+                if spacy_decisions.get(b.block_id, False):
+                    b.block_type = BlockType.DECISION
+                    b.block_type_confidence = 0.88
+                    b.block_type_method = "spacy+regex"
+                else:
+                    b._heuristic_hint = btype  # store hint for LLM prompt
+                    ambiguous_blocks.append(b)
             else:
                 b.block_type = btype
                 b.block_type_confidence = conf
                 b.block_type_method = "structural"
         else:
-            ambiguous_blocks.append(b)
+            # No heuristic match — check spaCy before sending to LLM
+            if spacy_decisions.get(b.block_id, False):
+                b.block_type = BlockType.DECISION
+                b.block_type_confidence = 0.82
+                b.block_type_method = "spacy"
+            else:
+                ambiguous_blocks.append(b)
 
     if not ambiguous_blocks:
         return

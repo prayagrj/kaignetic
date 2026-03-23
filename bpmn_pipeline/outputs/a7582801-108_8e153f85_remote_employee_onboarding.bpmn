@@ -1,0 +1,185 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="definitions_a7582801-108_8e153f85" targetNamespace="http://bpmn.io/schema/bpmn">
+  <process id="process_a7582801-108_8e153f85" isExecutable="false">
+    <laneSet id="laneSet_1">
+      <lane id="lane_employee" name="Employee">
+        <flowNodeRef>gateway_2c853497</flowNodeRef>
+        <flowNodeRef>task_bb682f2f</flowNodeRef>
+        <flowNodeRef>task_64daa444</flowNodeRef>
+      </lane>
+      <lane id="lane_hr_business_partner" name="HR Business Partner">
+        <flowNodeRef>task_f72d54d8</flowNodeRef>
+        <flowNodeRef>task_8096ff01</flowNodeRef>
+        <flowNodeRef>task_ecf0fde8</flowNodeRef>
+        <flowNodeRef>task_17be8ae1</flowNodeRef>
+      </lane>
+      <lane id="lane_it_helpdesk" name="IT Helpdesk">
+        <flowNodeRef>task_5fb6c2bd</flowNodeRef>
+      </lane>
+    </laneSet>
+    <startEvent id="start_c610a76b" name="Start"/>
+    <exclusiveGateway id="gateway_2c853497" name="evaluate remote joining condition"/>
+    <userTask id="task_f72d54d8" name="confirm shipping address with employee"/>
+    <userTask id="task_5fb6c2bd" name="ship laptop to employee's registered address"/>
+    <userTask id="task_bb682f2f" name="collect required documents via HR portal"/>
+    <userTask id="task_64daa444" name="submit self‑attestation declaration"/>
+    <userTask id="task_8096ff01" name="share induction materials digitally"/>
+    <userTask id="task_ecf0fde8" name="conduct HR induction session via video…"/>
+    <userTask id="task_17be8ae1" name="conduct buddy orientation meeting"/>
+    <endEvent id="end_8f05079c" name="End"/>
+    <sequenceFlow id="flow_f117ed1a" sourceRef="start_c610a76b" targetRef="gateway_2c853497"/>
+    <sequenceFlow id="flow_3424a82d" sourceRef="task_f72d54d8" targetRef="task_5fb6c2bd"/>
+    <sequenceFlow id="flow_14f4aa5e" sourceRef="task_5fb6c2bd" targetRef="task_bb682f2f"/>
+    <sequenceFlow id="flow_01da2de6" sourceRef="task_bb682f2f" targetRef="task_64daa444"/>
+    <sequenceFlow id="flow_7c07737e" sourceRef="task_64daa444" targetRef="task_8096ff01"/>
+    <sequenceFlow id="flow_894d08d1" sourceRef="task_8096ff01" targetRef="task_ecf0fde8"/>
+    <sequenceFlow id="flow_c3110687" sourceRef="task_ecf0fde8" targetRef="task_17be8ae1"/>
+    <sequenceFlow id="flow_ef400fc6" sourceRef="task_17be8ae1" targetRef="end_8f05079c"/>
+    <sequenceFlow id="flow_e291c33c" sourceRef="gateway_2c853497" targetRef="task_f72d54d8" name="Remote joining">
+      <conditionExpression>${V_is_remote} == true</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_e74e159f" sourceRef="gateway_2c853497" targetRef="task_f72d54d8" name="On‑site joining" isDefault="true"/>
+    <dataObject id="do_V_is_remote" name="V_is_remote"/>
+    <dataObjectReference id="dor_V_is_remote" dataObjectRef="do_V_is_remote" name="V_is_remote"/>
+    <dataInputAssociation id="dia_in_V_is_remote_64daa4">
+      <sourceRef>dor_V_is_remote</sourceRef>
+      <targetRef>task_64daa444</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_address_confirmed" name="V_address_confirmed"/>
+    <dataObjectReference id="dor_V_address_confirmed" dataObjectRef="do_V_address_confirmed" name="V_address_confirmed"/>
+    <dataOutputAssociation id="doa_out_V_address_confirmed_f72d54">
+      <sourceRef>task_f72d54d8</sourceRef>
+      <targetRef>dor_V_address_confirmed</targetRef>
+    </dataOutputAssociation>
+    <dataInputAssociation id="dia_in_V_address_confirmed_5fb6c2">
+      <sourceRef>dor_V_address_confirmed</sourceRef>
+      <targetRef>task_5fb6c2bd</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_employee_address" name="V_employee_address"/>
+    <dataObjectReference id="dor_V_employee_address" dataObjectRef="do_V_employee_address" name="V_employee_address"/>
+    <dataInputAssociation id="dia_in_V_employee_address_f72d54">
+      <sourceRef>dor_V_employee_address</sourceRef>
+      <targetRef>task_f72d54d8</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_laptop_shipped" name="V_laptop_shipped"/>
+    <dataObjectReference id="dor_V_laptop_shipped" dataObjectRef="do_V_laptop_shipped" name="V_laptop_shipped"/>
+    <dataOutputAssociation id="doa_out_V_laptop_shipped_5fb6c2">
+      <sourceRef>task_5fb6c2bd</sourceRef>
+      <targetRef>dor_V_laptop_shipped</targetRef>
+    </dataOutputAssociation>
+    <dataObject id="do_V_joining_date" name="V_joining_date"/>
+    <dataObjectReference id="dor_V_joining_date" dataObjectRef="do_V_joining_date" name="V_joining_date"/>
+    <dataInputAssociation id="dia_in_V_joining_date_5fb6c2">
+      <sourceRef>dor_V_joining_date</sourceRef>
+      <targetRef>task_5fb6c2bd</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_documents_submitted" name="V_documents_submitted"/>
+    <dataObjectReference id="dor_V_documents_submitted" dataObjectRef="do_V_documents_submitted" name="V_documents_submitted"/>
+    <dataOutputAssociation id="doa_out_V_documents_submitted_bb682f">
+      <sourceRef>task_bb682f2f</sourceRef>
+      <targetRef>dor_V_documents_submitted</targetRef>
+    </dataOutputAssociation>
+    <dataObject id="do_V_self_attestation" name="V_self_attestation"/>
+    <dataObjectReference id="dor_V_self_attestation" dataObjectRef="do_V_self_attestation" name="V_self_attestation"/>
+    <dataOutputAssociation id="doa_out_V_self_attestation_64daa4">
+      <sourceRef>task_64daa444</sourceRef>
+      <targetRef>dor_V_self_attestation</targetRef>
+    </dataOutputAssociation>
+    <dataObject id="do_V_induction_materials_shared" name="V_induction_materials_shared"/>
+    <dataObjectReference id="dor_V_induction_materials_shared" dataObjectRef="do_V_induction_materials_shared" name="V_induction_materials_shared"/>
+    <dataOutputAssociation id="doa_out_V_induction_materials_shared_8096ff">
+      <sourceRef>task_8096ff01</sourceRef>
+      <targetRef>dor_V_induction_materials_shared</targetRef>
+    </dataOutputAssociation>
+    <dataInputAssociation id="dia_in_V_induction_materials_shared_ecf0fd">
+      <sourceRef>dor_V_induction_materials_shared</sourceRef>
+      <targetRef>task_ecf0fde8</targetRef>
+    </dataInputAssociation>
+    <dataObject id="do_V_induction_session_conducted" name="V_induction_session_conducted"/>
+    <dataObjectReference id="dor_V_induction_session_conducted" dataObjectRef="do_V_induction_session_conducted" name="V_induction_session_conducted"/>
+    <dataOutputAssociation id="doa_out_V_induction_session_conducted_ecf0fd">
+      <sourceRef>task_ecf0fde8</sourceRef>
+      <targetRef>dor_V_induction_session_conducted</targetRef>
+    </dataOutputAssociation>
+    <dataObject id="do_V_buddy_orientation_meeting_conducted" name="V_buddy_orientation_meeting_conducted"/>
+    <dataObjectReference id="dor_V_buddy_orientation_meeting_conducted" dataObjectRef="do_V_buddy_orientation_meeting_conducted" name="V_buddy_orientation_meeting_conducted"/>
+    <dataOutputAssociation id="doa_out_V_buddy_orientation_meeting_conducted_17be8a">
+      <sourceRef>task_17be8ae1</sourceRef>
+      <targetRef>dor_V_buddy_orientation_meeting_conducted</targetRef>
+    </dataOutputAssociation>
+  </process>
+  <bpmndi:BPMNDiagram id="diagram_8e153f85">
+    <bpmndi:BPMNPlane id="plane_8e153f85" bpmnElement="process_a7582801-108_8e153f85">
+      <bpmndi:BPMNShape id="shape_c610a76b" bpmnElement="start_c610a76b">
+        <dc:Bounds x="50" y="50" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_2c853497" bpmnElement="gateway_2c853497">
+        <dc:Bounds x="230" y="50" width="50" height="50"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_f72d54d8" bpmnElement="task_f72d54d8">
+        <dc:Bounds x="410" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_5fb6c2bd" bpmnElement="task_5fb6c2bd">
+        <dc:Bounds x="590" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_bb682f2f" bpmnElement="task_bb682f2f">
+        <dc:Bounds x="770" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_64daa444" bpmnElement="task_64daa444">
+        <dc:Bounds x="950" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_8096ff01" bpmnElement="task_8096ff01">
+        <dc:Bounds x="1130" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_ecf0fde8" bpmnElement="task_ecf0fde8">
+        <dc:Bounds x="1310" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_17be8ae1" bpmnElement="task_17be8ae1">
+        <dc:Bounds x="1490" y="50" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_8f05079c" bpmnElement="end_8f05079c">
+        <dc:Bounds x="1670" y="50" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="edge_f117ed1a" bpmnElement="flow_f117ed1a">
+        <di:waypoint x="86" y="68.0"/>
+        <di:waypoint x="230" y="75.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_3424a82d" bpmnElement="flow_3424a82d">
+        <di:waypoint x="530" y="80.0"/>
+        <di:waypoint x="590" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_14f4aa5e" bpmnElement="flow_14f4aa5e">
+        <di:waypoint x="710" y="80.0"/>
+        <di:waypoint x="770" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_01da2de6" bpmnElement="flow_01da2de6">
+        <di:waypoint x="890" y="80.0"/>
+        <di:waypoint x="950" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_7c07737e" bpmnElement="flow_7c07737e">
+        <di:waypoint x="1070" y="80.0"/>
+        <di:waypoint x="1130" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_894d08d1" bpmnElement="flow_894d08d1">
+        <di:waypoint x="1250" y="80.0"/>
+        <di:waypoint x="1310" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_c3110687" bpmnElement="flow_c3110687">
+        <di:waypoint x="1430" y="80.0"/>
+        <di:waypoint x="1490" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_ef400fc6" bpmnElement="flow_ef400fc6">
+        <di:waypoint x="1610" y="80.0"/>
+        <di:waypoint x="1670" y="68.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_e291c33c" bpmnElement="flow_e291c33c">
+        <di:waypoint x="280" y="75.0"/>
+        <di:waypoint x="410" y="80.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_e74e159f" bpmnElement="flow_e74e159f">
+        <di:waypoint x="280" y="75.0"/>
+        <di:waypoint x="410" y="80.0"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

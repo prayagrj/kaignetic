@@ -7,6 +7,50 @@ from llm.prompts import DEDUPLICATE_ACTORS_SYSTEM, DEDUPLICATE_ACTORS_USER, EXTR
 from models.schemas import Actor, ActorRegistry, ContextIndex, GlossaryEntry, Job, SectionAnchor, BlockType
 
 
+# ── spaCy inline actor extraction ───────────────────────────────────────────────
+
+# Actor-role patterns that look like job titles (help filter NER noise)
+_ROLE_PATTERN = re.compile(
+    r'\b(manager|officer|coordinator|director|analyst|supervisor|lead|head|specialist|administrator|officer|agent|staff|team)\b',
+    re.I,
+)
+
+
+def _extract_inline_actors(blocks) -> list[str]:
+    """
+    Use spaCy NER to find PERSON and ORG entities in STEP/DECISION blocks.
+    Filters to entities that look like job titles (via _ROLE_PATTERN) or
+    are short enough to be a role name (<=5 words).
+
+    Falls back to empty list if spaCy is unavailable.
+    """
+    target_types = {BlockType.STEP, BlockType.DECISION, BlockType.EXCEPTION}
+    target_blocks = [b for b in blocks if b.block_type in target_types]
+    if not target_blocks:
+        return []
+
+    try:
+        import spacy  # noqa: PLC0415
+        nlp = spacy.load("en_core_web_sm", disable=["parser", "lemmatizer"])
+    except Exception:
+        return []  # spaCy unavailable — degrade gracefully
+
+    texts = [b.raw_text[:300] for b in target_blocks]
+    inline_actors: set[str] = set()
+
+    for doc in nlp.pipe(texts, batch_size=64):
+        for ent in doc.ents:
+            if ent.label_ not in ("PERSON", "ORG"):
+                continue
+            text = ent.text.strip()
+            words = text.split()
+            # Keep only short spans (potential role names) or those matching role keywords
+            if len(words) <= 5 and (_ROLE_PATTERN.search(text) or len(words) <= 3):
+                inline_actors.add(text)
+
+    return sorted(inline_actors)
+
+
 def run(job: Job) -> None:
 
     blocks = job.blocks
@@ -57,11 +101,19 @@ def _build_actor_registry(job, llm: LLMClient) -> ActorRegistry:
     actor_candidates = []
     role_headers = re.compile(r'role|actor|responsible|performed by', re.I)
 
+    # Explicit ACTOR blocks — highest confidence
     for b in job.blocks:
         if b.block_type == BlockType.ACTOR:
             actor_candidates.append(b.raw_text.strip())
 
+    # Inline actors mined via spaCy NER from STEP/DECISION blocks (TASK 5)
+    inline_actors = _extract_inline_actors(job.blocks)
+    for actor in inline_actors:
+        if actor not in actor_candidates:
+            actor_candidates.append(actor)
+
     if not actor_candidates:
+        # Fallback: short text blocks that might be role names
         for b in job.blocks:
             words = b.raw_text.split()
             if len(words) <= 4 and b.block_type in [BlockType.STEP, BlockType.NOTE]:

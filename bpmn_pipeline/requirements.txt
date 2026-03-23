@@ -9,3 +9,4 @@ python-dotenv
 pytest
 langfuse
 langfuse
+spacy>=3.7

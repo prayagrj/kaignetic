@@ -114,6 +114,7 @@ class BPMNNode:
     label: str = ""
     actor: Optional[str] = None
     gateway_type: Optional[GatewayType] = None
+    gateway_direction: Optional[str] = None  # "DIVERGING" | "CONVERGING" (set by L8)
     x: Optional[float] = None
     y: Optional[float] = None
     width: Optional[float] = None
@@ -132,6 +133,8 @@ class BPMNEdge:
     label: Optional[str] = None
     is_default: bool = False
     edge_type: str = "SEQUENCE_FLOW"
+    condition_variable: Optional[str] = None   # variable name tested at this branch (L8)
+    condition_value: Optional[str] = None      # expected value for the condition label
 
 
 @dataclass
@@ -227,6 +230,7 @@ class ProcessModel:
     data_vars: list = field(default_factory=list)
     bpmn_nodes: list = field(default_factory=list)
     bpmn_edges: list = field(default_factory=list)
+    preamble: list = field(default_factory=list)  # non-executable sections attached as context
 
 
 @dataclass
