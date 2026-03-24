@@ -1,0 +1,1 @@
+{"result": [{"block_id": "e13d45e2", "block_type": "DECISION", "confidence": 0.92, "reasoning": "The text contains conditional clauses ('If either party has not submitted...') that define branching behavior, indicating a decision point."}], "input_tokens": 481, "output_tokens": 283}

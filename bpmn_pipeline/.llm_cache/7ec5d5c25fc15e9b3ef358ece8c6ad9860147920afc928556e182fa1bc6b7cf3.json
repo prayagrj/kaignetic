@@ -1,0 +1,1 @@
+{"result": {"gateway_type": "XOR", "branches": [{"condition_label": "Employee joins remotely", "condition_var": null, "condition_value": "true", "target_unit_id": "36baba32", "is_default": false}]}, "input_tokens": 1198, "output_tokens": 468}

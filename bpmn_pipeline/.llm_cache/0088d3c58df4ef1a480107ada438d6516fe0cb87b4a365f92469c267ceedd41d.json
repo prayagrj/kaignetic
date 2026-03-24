@@ -1,0 +1,1 @@
+{"result": [{"block_id": "728b77cd", "block_type": "DECISION", "confidence": 0.72, "reasoning": "The text contains an explicit conditional clause starting with \"If the employee raises any objection...\", indicating a branching point, which outweighs the preceding action statements."}], "input_tokens": 455, "output_tokens": 431}

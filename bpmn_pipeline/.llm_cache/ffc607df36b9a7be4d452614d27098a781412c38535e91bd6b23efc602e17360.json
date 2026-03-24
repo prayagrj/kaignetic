@@ -1,0 +1,1 @@
+{"result": [{"block_id": "97ab8e05", "block_type": "DECISION", "confidence": 0.78, "reasoning": "The text contains explicit conditional clauses ('If details are incorrect or incomplete...' and 'If the employee joins after the 15th...'), indicating branching logic, which matches the DECISION type."}], "input_tokens": 461, "output_tokens": 314}

@@ -1,0 +1,1 @@
+{"result": [{"block_id": "509a678e", "block_type": "ACTOR", "confidence": 0.95, "reasoning": "The text lists roles (HR Business Partner, Hiring Manager, IT Helpdesk, Finance Team, Employee) and describes what each role does, which matches the definition of an ACTOR block."}], "input_tokens": 454, "output_tokens": 261}

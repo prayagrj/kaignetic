@@ -1,0 +1,1 @@
+{"result": [{"block_id": "9621de9b", "block_type": "DECISION", "confidence": 0.93, "reasoning": "The text contains explicit conditional clauses ('If the BGV report is clear...','If the BGV report flags a discrepancy...'), indicating branching logic rather than a single action."}], "input_tokens": 468, "output_tokens": 220}

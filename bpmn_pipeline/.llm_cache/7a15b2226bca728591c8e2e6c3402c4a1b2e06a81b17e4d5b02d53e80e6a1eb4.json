@@ -1,0 +1,1 @@
+{"result": [{"block_id": "88e1e554", "block_type": "DECISION", "confidence": 0.88, "reasoning": "The text contains an explicit conditional clause ('If standard configuration: ...'), indicating a branching point in the process."}], "input_tokens": 469, "output_tokens": 219}

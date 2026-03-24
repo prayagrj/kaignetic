@@ -1,6 +1,42 @@
 """LLM prompt templates for all pipeline layers."""
 
-# ── L3 — Block Classifier ────────────────────────────────────────────────────
+# ── L3 — Element Classifier ───────────────────────────────────────────────────
+
+CLASSIFY_ELEMENTS_SYSTEM = """\
+You are a process document parser. Classify every element in the input list.
+
+Keep classification coarse — do NOT try to identify sub-types of steps (no decisions, conditions,
+exceptions). Fine-grained step classification is handled downstream by the atomizer.
+
+Element types:
+- STEP: Any action, task, or activity to be performed by a person or system. Includes conditional
+  actions, approval steps, exception handling, and decision points. When in doubt, prefer STEP if
+  the text describes something someone must DO.
+- ACTOR: Defines a role, person, department, or system involved in the process
+  (e.g. "HR Manager", "IT Team", "System"). Must name a specific party.
+- NOTE: Informational text that is not part of the flow — explanations, tips, warnings, examples.
+- HEADER: A section title, heading, or label that organises content but contains no action.
+- META: Scope, purpose, applicability, definitions, glossary entries, prerequisites — contextual
+  framing that is not itself a step.
+- UNKNOWN: Cannot be confidently classified even with the section heading as context.
+
+Use the section heading path to resolve ambiguity.
+You MUST return exactly one JSON object per element_id (no omissions). Respond with JSON only.\
+"""
+
+CLASSIFY_ELEMENTS_USER = """\
+SOP class: {sop_class}
+Section heading: {section_heading}
+
+Elements to classify:
+{elements_json}
+
+Return a JSON array — one entry per element, same element_ids as input:
+[{{"element_id": "string", "block_type": "STEP|ACTOR|NOTE|HEADER|META|UNKNOWN", "confidence": 0.0}}]\
+"""
+
+
+# ── L3 — Block Classifier (legacy) ───────────────────────────────────────────
 
 CLASSIFY_BLOCKS_SYSTEM = """\
 You are a process document parser. You are given a batch of blocks from a business SOP.
@@ -115,9 +151,20 @@ Each unit: ONE action, ONE actor, optional condition, optional output.
 Rules:
 - Split on "and", "then", "after that" only when they describe distinct, separate actions.
 - Multiple actors doing different things → one unit per actor.
-- A decision block → the decision itself is one unit; each branch is NOT included here.
+- Write `action` as a complete, clear imperative sentence. Never truncate or add "…". Be concise but complete.
 - Use ONLY canonical actor names from the provided list.
 - is_terminal: true if this unit ends a process path (final approval, archival, closure).
+- If a block contains no actionable steps (purely informational/scope), return an empty atomic_units list.
+
+Step type (REQUIRED for every unit):
+- SIMPLE: a direct, unconditional action (e.g., "Send the completed form to HR").
+- CONDITIONAL: an action that only occurs under a specific condition — the condition field MUST be filled
+  (e.g., action="Return documents to applicant", condition="If documents are incomplete").
+- DECISION: a branching point where the process splits into multiple distinct paths based on an outcome.
+  The action describes what is being decided (e.g., "Determine whether the application is approved or rejected").
+  The condition field captures the decision question or criteria.
+  IMPORTANT: Mark as DECISION only when the text clearly describes a fork — two or more different paths
+  are taken depending on the outcome.
 
 Variable extraction (IMPORTANT):
 - For each atomic unit, identify what named data variables it CONSUMES (inputs) and PRODUCES (outputs).
@@ -125,8 +172,7 @@ Variable extraction (IMPORTANT):
 - Reuse variable names from "Known variables" when the same data is referenced.
 - Variable types: bool (true/false decision result), data (a document/form/record), id (identifier), count, unknown.
 
-Context blocks are provided for reference only to help understand the situation. Do NOT produce atomic_units for them.
-All target blocks provided MUST be atomized.
+Context blocks are provided for reference only. Do NOT produce atomic_units for them.
 
 Respond with JSON only.\
 """
@@ -156,7 +202,8 @@ Return a JSON array — one entry per Target Block ID:
     "atomic_units": [
       {{
         "sequence_in_block": 0,
-        "action": "string",
+        "step_type": "SIMPLE|CONDITIONAL|DECISION",
+        "action": "string (complete sentence, no truncation)",
         "actor": "string",
         "condition": "string or null",
         "output": "string or null",
@@ -176,9 +223,28 @@ INFER_SINGLE_GATEWAY_SYSTEM = """\
 You analyse a decision/gateway block from a business process. The block may map to one or more atomic units (listed in atomic_units); treat them as one decision context.
 
 Your task:
-1. Determine the gateway type: XOR (exactly one branch), AND (all branches parallel), OR (one or more).
-2. Identify the branches — what condition (and variable value if available) leads to which next step.
-3. For each branch, provide the condition_label and the unit_id of the first step on that branch (unit_id must match one of the listed units or a following unit from context).
+1. Determine the gateway type — choose exactly one:
+   - EXCLUSIVE: only ONE branch is taken based on a condition.
+     Signals: "if … then … otherwise", "depending on", "based on the result",
+              "if approved / if rejected", "unless", "in case of".
+   - PARALLEL: ALL branches run at the same time (split into concurrent work).
+     Signals: "simultaneously", "at the same time", "in parallel", "concurrently",
+              "both X and Y are done", "trigger all of the following".
+   - EVENT_BASED: the next step depends on which external event arrives first.
+     Signals: "wait for", "whichever comes first", "upon receiving",
+              "if the timer expires before", "escalate if no response by".
+
+2. Write a short human-readable gateway_label that names what is being decided or split
+   (e.g. "Approval decision", "Parallel document preparation", "Response or timeout").
+
+3. Identify ALL branches — a valid gateway has at least 2 branches. Tips:
+   - Following units with step_type="CONDITIONAL" are likely branch entry points — use their unit_id.
+   - If only one path is explicit, add a "Default / otherwise" branch as the second.
+   For each branch provide:
+   - label: concise text on the arrow (e.g. "Approved", "Rejected", "Documents incomplete", "Default / otherwise")
+   - condition_var / condition_value: variable and its value driving this branch (if known)
+   - target_unit_id: unit_id from following_units — never invent IDs
+   - is_default: true for the catch-all / otherwise branch
 
 Respond with JSON only.\
 """
@@ -190,7 +256,7 @@ Gateway block (includes all atomic units for this block):
 Preceding units (in order, most recent last):
 {preceding_units_json}
 
-Following units (in order):
+Following units (in order) — units with step_type="CONDITIONAL" are branch entry points:
 {following_units_json}
 
 Known variables at this point:
@@ -198,10 +264,11 @@ Known variables at this point:
 
 Return:
 {{
-  "gateway_type": "XOR|AND|OR",
+  "gateway_type": "EXCLUSIVE|PARALLEL|EVENT_BASED",
+  "gateway_label": "string",
   "branches": [
     {{
-      "condition_label": "string",
+      "label": "string",
       "condition_var": "V_var_name or null",
       "condition_value": "true|false|string or null",
       "target_unit_id": "string or null",
@@ -280,6 +347,57 @@ Cross-reference blocks: {cross_ref_blocks_json}
 Block id→label map: {block_id_label_map_json}
 
 Return: {{"gateways": [{{"block_id": "string", "gateway_type": "XOR|AND|OR", "branches": [{{"branch_text": "string", "condition_label": "string", "is_default": false}}]}}], "edge_overrides": [{{"source_block_id": "string", "target_block_id": "string", "edge_label": "string or null", "override_reason": "loop_back|forward_jump|explicit_reference"}}]}}\
+"""
+
+
+# ── L8 — Isolated Subgraph Reconnection ──────────────────────────────────────
+
+RECONNECT_ISOLATED_NODES_SYSTEM = """\
+You reconnect isolated subgraphs in a BPMN process flow diagram.
+
+You are given:
+- isolated_nodes: task/gateway nodes that are NOT reachable from the START event.
+- reachable_nodes: nodes already wired into the main flow (reachable from START).
+
+For each isolated node decide:
+  connect_from — the node_id of a reachable node that should have a sequence flow
+                 INTO the isolated node (its logical predecessor).
+  connect_to   — the node_id of a reachable node that the isolated node should flow
+                 INTO (its logical successor). May be null if the isolated node is
+                 a terminal step or if its successor is also isolated.
+
+Reasoning guidelines:
+- doc_position is the node's order in the source document (lower = earlier).
+- A reachable node just before the isolated node in doc_position is a strong
+  predecessor candidate; one just after is a strong successor candidate.
+- Actor alignment matters: prefer nodes with the same actor for direct connections.
+- Node type matters: a GATEWAY usually precedes conditional branches.
+- If you cannot determine a connection with reasonable confidence, set the field
+  to null and lower your confidence score.
+
+CRITICAL constraints:
+- connect_from MUST be a node_id from reachable_nodes, or null.
+- connect_to   MUST be a node_id from reachable_nodes, or null.
+- Never invent node_ids. Only use the exact strings from the provided lists.
+- Respond with JSON only.\
+"""
+
+RECONNECT_ISOLATED_NODES_USER = """\
+Isolated nodes (not reachable from START):
+{isolated_nodes_json}
+
+Reachable candidate nodes (already in the main flow):
+{reachable_nodes_json}
+
+Return a JSON array — one entry per isolated node:
+[
+  {{
+    "node_id": "the isolated node_id (exact string from input)",
+    "connect_from": "reachable node_id or null",
+    "connect_to":   "reachable node_id or null",
+    "confidence":   0.0
+  }}
+]\
 """
 
 

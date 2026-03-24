@@ -1,0 +1,1 @@
+{"result": [{"block_id": "b3878853", "block_type": "DECISION", "confidence": 0.92, "reasoning": "The text centers on conditional branches ('If the candidate does not respond...', 'If the candidate declines...', 'If the candidate accepts...'), which define decision points in the process."}], "input_tokens": 466, "output_tokens": 326}

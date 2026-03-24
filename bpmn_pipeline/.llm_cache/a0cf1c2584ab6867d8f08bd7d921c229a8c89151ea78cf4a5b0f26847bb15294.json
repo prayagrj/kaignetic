@@ -1,0 +1,1 @@
+{"result": [{"block_id": "4b926b0e", "block_type": "DECISION", "confidence": 0.92, "reasoning": "The text contains explicit conditional clauses introduced by \"If\", defining branching behavior (e.g., raise a ticket only if issues are reported, escalate only if not resolved), which matches the DECISION type."}], "input_tokens": 464, "output_tokens": 254}

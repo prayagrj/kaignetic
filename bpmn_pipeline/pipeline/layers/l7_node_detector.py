@@ -1,19 +1,22 @@
 """L7 — Node Detector: AtomicUnit → BPMNNode (pure structural mapping).
 
+Updated for StructuredChunks: uses chunk_map instead of block_map,
+reads chunk.chunk_type for DECISION/EXCEPTION detection.
+
 One START_EVENT and one END_EVENT per ProcessModel; all tasks/gateways lie between them.
 """
-MAX_LABEL_LEN = 45
+import uuid
+
+from models.schemas import BPMNNode, BPMNNodeType, BlockType, Job, ProcessModel
+
+MAX_LABEL_LEN = 120
 
 
 def truncate_label(text: str, max_len: int = MAX_LABEL_LEN) -> str:
-    """Truncate at word boundary with ellipsis if text exceeds max_len."""
     if len(text) <= max_len:
         return text
     truncated = text[:max_len].rsplit(" ", 1)[0]
     return truncated + "\u2026"
-import uuid
-
-from models.schemas import BPMNNode, BPMNNodeType, BlockType, Job, ProcessModel
 
 
 def run(job: Job) -> None:
@@ -22,9 +25,10 @@ def run(job: Job) -> None:
 
 
 def _build_process_nodes(job: Job, process: ProcessModel) -> None:
-    block_map = {b.block_id: b for b in process.blocks}
+    # Index chunks by chunk_id for O(1) type lookup
+    chunk_map = {c.chunk_id: c for c in process.chunks}
     unit_to_task_node: dict[str, str] = {}
-    block_to_exception_node: dict[str, str] = {}
+    chunk_to_exception_node: dict[str, str] = {}
 
     start_node = BPMNNode(
         node_id=_nid(),
@@ -35,8 +39,8 @@ def _build_process_nodes(job: Job, process: ProcessModel) -> None:
     nodes: list[BPMNNode] = [start_node]
 
     for unit in process.atomic_units:
-        block = block_map.get(unit.block_id)
-        if not block:
+        chunk = chunk_map.get(unit.chunk_id)
+        if not chunk:
             continue
 
         task_node = BPMNNode(
@@ -47,7 +51,9 @@ def _build_process_nodes(job: Job, process: ProcessModel) -> None:
             actor=unit.actor,
         )
 
-        if block.block_type == BlockType.DECISION:
+        # Gateway if the atomizer identified this unit as a decision point (step_type=DECISION).
+        # This replaces the old chunk-type check so L3 no longer needs to emit DECISION.
+        if getattr(unit, 'step_type', 'SIMPLE') == 'DECISION':
             task_node.bpmn_type = BPMNNodeType.GATEWAY
         else:
             task_node.bpmn_type = BPMNNodeType.TASK
@@ -63,10 +69,12 @@ def _build_process_nodes(job: Job, process: ProcessModel) -> None:
     )
     nodes.append(end_node)
 
-    for block in process.blocks:
-        if block.block_type != BlockType.EXCEPTION:
+    # BOUNDARY_EVENT nodes for EXCEPTION chunks
+    for chunk in process.chunks:
+        if chunk.chunk_type != BlockType.EXCEPTION:
             continue
-        label = " ".join(block.raw_text.split()[:8])
+        label_words = chunk.contextualized.split()[:8]
+        label = " ".join(label_words)
         node = BPMNNode(
             node_id=_nid(),
             job_id=job.job_id,
@@ -74,11 +82,11 @@ def _build_process_nodes(job: Job, process: ProcessModel) -> None:
             label=label,
         )
         nodes.append(node)
-        block_to_exception_node[block.block_id] = node.node_id
+        chunk_to_exception_node[chunk.chunk_id] = node.node_id
 
     process.bpmn_nodes = nodes
     process.__dict__["_unit_to_task_node"] = unit_to_task_node
-    process.__dict__["_block_to_exception_node"] = block_to_exception_node
+    process.__dict__["_chunk_to_exception_node"] = chunk_to_exception_node
 
 
 def validate_gate(job: Job) -> None:
@@ -92,15 +100,9 @@ def validate_gate(job: Job) -> None:
         starts = [n for n in process.bpmn_nodes if n.bpmn_type == BPMNNodeType.START_EVENT]
         ends = [n for n in process.bpmn_nodes if n.bpmn_type == BPMNNodeType.END_EVENT]
         if len(starts) != 1:
-            raise LayerError(
-                "L7_MULTIPLE_START_EVENTS",
-                f"Expected exactly 1 START_EVENT in {process.name}, found {len(starts)}.",
-            )
+            raise LayerError("L7_MULTIPLE_START_EVENTS", f"Expected 1 START_EVENT in {process.name}, found {len(starts)}.")
         if len(ends) != 1:
-            raise LayerError(
-                "L7_MULTIPLE_END_EVENTS",
-                f"Expected exactly 1 END_EVENT in {process.name}, found {len(ends)}.",
-            )
+            raise LayerError("L7_MULTIPLE_END_EVENTS", f"Expected 1 END_EVENT in {process.name}, found {len(ends)}.")
 
         unlabeled = [n for n in process.bpmn_nodes if not n.label]
         if unlabeled:

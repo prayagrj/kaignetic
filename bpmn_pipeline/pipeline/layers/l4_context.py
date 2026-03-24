@@ -1,64 +1,21 @@
-"""L4 — Context Indexing: section anchors, actor registry, glossary."""
 import json
 import re
 
 from llm.client import LLMClient
 from llm.prompts import DEDUPLICATE_ACTORS_SYSTEM, DEDUPLICATE_ACTORS_USER, EXTRACT_GLOSSARY_SYSTEM, EXTRACT_GLOSSARY_USER
-from models.schemas import Actor, ActorRegistry, ContextIndex, GlossaryEntry, Job, SectionAnchor, BlockType
+from models.schemas import Actor, ActorRegistry, BlockType, ContextIndex, GlossaryEntry, Job, SectionAnchor
 
-
-# ── spaCy inline actor extraction ───────────────────────────────────────────────
-
-# Actor-role patterns that look like job titles (help filter NER noise)
 _ROLE_PATTERN = re.compile(
-    r'\b(manager|officer|coordinator|director|analyst|supervisor|lead|head|specialist|administrator|officer|agent|staff|team)\b',
+    r'\b(manager|officer|coordinator|director|analyst|supervisor|lead|head|specialist|administrator|agent|staff|team)\b',
     re.I,
 )
 
 
-def _extract_inline_actors(blocks) -> list[str]:
-    """
-    Use spaCy NER to find PERSON and ORG entities in STEP/DECISION blocks.
-    Filters to entities that look like job titles (via _ROLE_PATTERN) or
-    are short enough to be a role name (<=5 words).
-
-    Falls back to empty list if spaCy is unavailable.
-    """
-    target_types = {BlockType.STEP, BlockType.DECISION, BlockType.EXCEPTION}
-    target_blocks = [b for b in blocks if b.block_type in target_types]
-    if not target_blocks:
-        return []
-
-    try:
-        import spacy  # noqa: PLC0415
-        nlp = spacy.load("en_core_web_sm", disable=["parser", "lemmatizer"])
-    except Exception:
-        return []  # spaCy unavailable — degrade gracefully
-
-    texts = [b.raw_text[:300] for b in target_blocks]
-    inline_actors: set[str] = set()
-
-    for doc in nlp.pipe(texts, batch_size=64):
-        for ent in doc.ents:
-            if ent.label_ not in ("PERSON", "ORG"):
-                continue
-            text = ent.text.strip()
-            words = text.split()
-            # Keep only short spans (potential role names) or those matching role keywords
-            if len(words) <= 5 and (_ROLE_PATTERN.search(text) or len(words) <= 3):
-                inline_actors.add(text)
-
-    return sorted(inline_actors)
-
-
 def run(job: Job) -> None:
-
-    blocks = job.blocks
-    id_map = {b.block_id: b for b in blocks}
     llm = LLMClient(job)
 
-    section_anchors = _build_section_anchors(blocks)
-    exception_blocks = [b.block_id for b in blocks if b.block_type == BlockType.EXCEPTION]
+    section_anchors = _build_section_anchors(job.chunks)
+    exception_chunks = [c.chunk_id for c in job.chunks if c.chunk_type == BlockType.EXCEPTION]
     actor_registry = _build_actor_registry(job, llm)
     glossary = _extract_glossary(job, llm)
 
@@ -66,7 +23,7 @@ def run(job: Job) -> None:
         job_id=job.job_id,
         section_anchors=section_anchors,
         glossary=glossary,
-        exception_blocks=exception_blocks,
+        exception_chunks=exception_chunks,
         actor_registry=actor_registry,
     )
 
@@ -78,46 +35,62 @@ def validate_gate(job: Job) -> None:
         raise LayerError("L4_NO_ACTORS", "No actors found in document.")
 
 
-def _build_section_anchors(blocks) -> list:
+def _build_section_anchors(chunks: list) -> list:
+    """
+    One anchor per chunk, keyed by the deepest heading text.
+    Also add a number-stripped alias (e.g. "Pre-Joining Phase" for "5. Pre-Joining Phase")
+    only when that alias doesn't already exist as another anchor.
+    """
     anchors = []
-    for b in blocks:
-        if b.block_type == BlockType.HEADER:
-            text = b.raw_text.strip()
-            anchors.append(SectionAnchor(anchor_text=text, block_id=b.block_id, heading_path=b.heading_path))
-            # Short aliases: remove leading numbering
-            short = re.sub(r'^\d+[\.\d]*\s*', '', text).strip()
-            if short and short != text:
-                anchors.append(SectionAnchor(anchor_text=short, block_id=b.block_id, heading_path=b.heading_path))
-        elif b.block_type == BlockType.STEP and b.list_depth == 1 and b.list_index:
+    seen: set[str] = set()  # lowercase anchor_text already emitted
+
+    for chunk in chunks:
+        if not chunk.headings:
+            continue
+        heading_text = chunk.headings[-1]  # deepest = most specific
+        key = heading_text.lower()
+        if key not in seen:
             anchors.append(SectionAnchor(
-                anchor_text=f"Step {b.list_index}",
-                block_id=b.block_id,
-                heading_path=b.heading_path,
+                anchor_text=heading_text,
+                chunk_id=chunk.chunk_id,
+                heading_path=list(chunk.headings),
             ))
+            seen.add(key)
+
+        # Short alias without leading numbering (e.g. "5.1 Offer Docs" → "Offer Docs")
+        short = re.sub(r'^\d+[\.\d]*\s*', '', heading_text).strip()
+        short_key = short.lower()
+        if short and short_key != key and short_key not in seen:
+            anchors.append(SectionAnchor(
+                anchor_text=short,
+                chunk_id=chunk.chunk_id,
+                heading_path=list(chunk.headings),
+            ))
+            seen.add(short_key)
+
     return anchors
 
 
 def _build_actor_registry(job, llm: LLMClient) -> ActorRegistry:
     actor_candidates = []
-    role_headers = re.compile(r'role|actor|responsible|performed by', re.I)
 
-    # Explicit ACTOR blocks — highest confidence
-    for b in job.blocks:
-        if b.block_type == BlockType.ACTOR:
-            actor_candidates.append(b.raw_text.strip())
+    # Explicit ACTOR chunks — highest confidence; use full contextualized text
+    for chunk in job.chunks:
+        if chunk.chunk_type == BlockType.ACTOR and chunk.contextualized:
+            actor_candidates.append(chunk.contextualized[:300])
 
-    # Inline actors mined via spaCy NER from STEP/DECISION blocks (TASK 5)
-    inline_actors = _extract_inline_actors(job.blocks)
+    # Inline actors via spaCy NER — scan STEP/DECISION chunk contextualized text
+    inline_actors = _extract_inline_actors(job.chunks)
     for actor in inline_actors:
         if actor not in actor_candidates:
             actor_candidates.append(actor)
 
     if not actor_candidates:
-        # Fallback: short text blocks that might be role names
-        for b in job.blocks:
-            words = b.raw_text.split()
-            if len(words) <= 4 and b.block_type in [BlockType.STEP, BlockType.NOTE]:
-                actor_candidates.append(b.raw_text.strip())
+        # Fallback: short contextualized chunks that look like role names
+        for chunk in job.chunks:
+            words = chunk.contextualized.split()
+            if len(words) <= 4 and chunk.chunk_type in [BlockType.STEP, BlockType.NOTE]:
+                actor_candidates.append(chunk.contextualized.strip())
 
     if not actor_candidates:
         return ActorRegistry(job_id=job.job_id, actors=[Actor(canonical_name="Process Owner")])
@@ -146,29 +119,53 @@ def _build_actor_registry(job, llm: LLMClient) -> ActorRegistry:
     return ActorRegistry(job_id=job.job_id, actors=actors)
 
 
-def _extract_glossary(job, llm: LLMClient) -> list:
-    glossary_re = re.compile(r'glossary|definitions|terms', re.I)
-    section_text = None
-    section_block_id = None
+def _extract_inline_actors(chunks: list) -> list:
+    """spaCy NER over STEP/DECISION chunk texts in one batch pass."""
+    target_types = {BlockType.STEP, BlockType.DECISION, BlockType.EXCEPTION}
+    target_chunks = [c for c in chunks if c.chunk_type in target_types]
+    if not target_chunks:
+        return []
 
-    for b in job.blocks:
-        if b.block_type == BlockType.HEADER and glossary_re.search(b.raw_text):
-            section_block_id = b.block_id
-            child_texts = []
-            for cb in job.blocks:
-                if cb.parent_id == b.block_id:
-                    child_texts.append(cb.raw_text)
-            section_text = "\n".join(child_texts)
+    try:
+        import spacy
+        nlp = spacy.load("en_core_web_sm", disable=["parser", "lemmatizer"])
+    except Exception:
+        return []
+
+    # Use contextualized text (contains full section context)
+    texts = [c.contextualized[:400] for c in target_chunks]
+    inline_actors: set = set()
+
+    for doc in nlp.pipe(texts, batch_size=64):
+        for ent in doc.ents:
+            if ent.label_ not in ("PERSON", "ORG"):
+                continue
+            text = ent.text.strip()
+            words = text.split()
+            if len(words) <= 5 and (_ROLE_PATTERN.search(text) or len(words) <= 3):
+                inline_actors.add(text)
+
+    return sorted(inline_actors)
+
+
+def _extract_glossary(job, llm: LLMClient) -> list:
+    """Find glossary chunk by heading, send its contextualized text to LLM."""
+    glossary_re = re.compile(r'glossary|definitions|terms', re.I)
+    glossary_chunk = None
+
+    for chunk in job.chunks:
+        if any(glossary_re.search(h) for h in chunk.headings):
+            glossary_chunk = chunk
             break
 
-    if not section_text:
+    if not glossary_chunk or not glossary_chunk.contextualized:
         return []
 
     result = llm.call(
         layer=4,
         template_name="EXTRACT_GLOSSARY",
         system_prompt=EXTRACT_GLOSSARY_SYSTEM,
-        user_prompt=EXTRACT_GLOSSARY_USER.format(section_text=section_text),
+        user_prompt=EXTRACT_GLOSSARY_USER.format(section_text=glossary_chunk.contextualized),
     )
 
     entries = []
@@ -177,7 +174,7 @@ def _extract_glossary(job, llm: LLMClient) -> list:
             entries.append(GlossaryEntry(
                 term=item.get("term", ""),
                 definition=item.get("definition", ""),
-                block_id=section_block_id or "",
+                chunk_id=glossary_chunk.chunk_id,
             ))
     return entries
 

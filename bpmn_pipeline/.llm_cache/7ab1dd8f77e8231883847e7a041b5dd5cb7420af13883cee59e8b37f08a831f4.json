@@ -1,0 +1,1 @@
+{"result": [{"block_id": "b11496fc", "block_type": "DECISION", "confidence": 0.92, "reasoning": "The text begins with an 'If' clause and later contains another 'If' clause, indicating branching logic rather than a single action, thus it is a decision point."}], "input_tokens": 466, "output_tokens": 271}

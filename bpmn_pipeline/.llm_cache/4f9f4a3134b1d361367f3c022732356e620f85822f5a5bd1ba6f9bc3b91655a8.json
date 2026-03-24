@@ -1,0 +1,1 @@
+{"result": [{"block_id": "ae8c09ab", "block_type": "DECISION", "confidence": 0.96, "reasoning": "The text contains several conditional clauses beginning with 'If', defining alternative paths based on candidate response, which matches the DECISION type."}], "input_tokens": 467, "output_tokens": 244}

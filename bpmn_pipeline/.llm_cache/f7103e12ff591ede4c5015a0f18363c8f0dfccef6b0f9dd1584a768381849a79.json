@@ -1,0 +1,1 @@
+{"result": [{"block_id": "344c7b6d", "block_type": "DECISION", "confidence": 0.88, "reasoning": "The text contains a conditional clause starting with \"If the employee raises any objection...\", which signals a branching point; despite preceding actions, the presence of this decision makes DECISION the most appropriate type."}], "input_tokens": 457, "output_tokens": 326}

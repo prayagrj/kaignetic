@@ -5,10 +5,13 @@ from datetime import datetime
 from models.schemas import Job, JobError, JobStatus, ReviewFlag
 from pipeline.layers import (
     l1_extraction, l2_segmentation, l3_classifier, l3b_process_splitter, l4_context,
-    l5_enrichment, l6_atomizer, l6b_var_linker, l7_node_detector,
+    l5_enrichment, l6_atomizer, l7_node_detector,
     l8_edge_detector, l9_dag_resolver, l10_translator,
 )
+from pipeline.utils.debug_utils import save_layer_state
 
+# Note: L6b (var_linker) runs as a sub-stage inside L8, not as a standalone layer.
+# It still populates process.data_vars for L10 to consume.
 LAYERS = [
     (1,  l1_extraction),
     (2,  l2_segmentation),
@@ -17,7 +20,6 @@ LAYERS = [
     (4,  l4_context),
     (5,  l5_enrichment),
     (6,  l6_atomizer),
-    ("6b", l6b_var_linker),   # Pure Python — no LLM
     (7,  l7_node_detector),
     (8,  l8_edge_detector),
     (9,  l9_dag_resolver),
@@ -33,9 +35,15 @@ def run_pipeline(job: Job) -> Job:
         job.current_layer = layer_num
         job.updated_at = _now()
         print(f"[Pipeline] Running L{layer_num}: {layer_mod.__name__.split('.')[-1]}")
+        layer_name = layer_mod.__name__.split('.')[-1]
+
+        # Save input state for debugging
+        save_layer_state(job, str(layer_num), layer_name, "input")
 
         try:
             layer_mod.run(job)
+            # Save output state for debugging
+            save_layer_state(job, str(layer_num), layer_name, "output")
         except Exception as e:
             code = getattr(e, "code", f"L{layer_num}_ERROR")
             job.status = JobStatus.FAILED
@@ -45,6 +53,8 @@ def run_pipeline(job: Job) -> Job:
                 message=str(e),
                 traceback=traceback.format_exc(),
             )
+            # Save failure state for debugging
+            save_layer_state(job, str(layer_num), layer_name, "failure")
             print(f"[Pipeline] L{layer_num} FAILED: {code} — {e}")
             return job
 

@@ -1,0 +1,1 @@
+{"result": [{"block_id": "824123a2", "block_type": "DECISION", "confidence": 0.86, "reasoning": "The text contains conditional clauses ('If either party has not submitted...') that dictate alternative actions, indicating a decision point."}], "input_tokens": 479, "output_tokens": 271}

@@ -1,0 +1,1 @@
+{"result": [{"block_id": "9771ff77", "block_type": "DECISION", "confidence": 0.96, "reasoning": "The text contains explicit conditional clauses starting with \"If\" that branch to different actions, indicating a decision point."}], "input_tokens": 467, "output_tokens": 171}

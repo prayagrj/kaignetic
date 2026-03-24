@@ -1,0 +1,1 @@
+{"result": [{"block_id": "bb385323", "block_type": "DECISION", "confidence": 0.85, "reasoning": "The text contains conditional clauses ('If either party has not submitted... HRBP sends a reminder'), indicating a branching decision point."}], "input_tokens": 478, "output_tokens": 348}

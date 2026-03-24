@@ -1,0 +1,1 @@
+{"result": [{"block_id": "c736545c", "block_type": "ACTOR", "confidence": 0.86, "reasoning": "The text lists people and roles (author, reviewers, approvers, distribution leads) which defines parties involved, matching the ACTOR category."}], "input_tokens": 398, "output_tokens": 226}

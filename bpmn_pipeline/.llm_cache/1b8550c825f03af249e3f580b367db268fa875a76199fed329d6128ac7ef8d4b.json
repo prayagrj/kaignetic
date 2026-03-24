@@ -1,0 +1,1 @@
+{"result": [{"block_id": "73bac244", "block_type": "DECISION", "confidence": 0.78, "reasoning": "The text contains an explicit conditional clause ('If standard configuration') that determines two alternative actions, indicating a branching point despite preceding steps."}], "input_tokens": 467, "output_tokens": 268}

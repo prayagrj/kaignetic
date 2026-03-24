@@ -1,0 +1,1 @@
+{"result": [{"block_id": "6dc01ad5", "block_type": "DECISION", "confidence": 0.9, "reasoning": "The text begins with an 'If' clause that determines whether the subsequent modifications apply, indicating a branching condition."}], "input_tokens": 460, "output_tokens": 317}

@@ -4,14 +4,25 @@ from typing import Optional
 
 
 class BlockType(str, Enum):
+    """Semantic classification for a chunk — what role it plays in the SOP."""
     STEP = "STEP"
     DECISION = "DECISION"
     EXCEPTION = "EXCEPTION"
     ACTOR = "ACTOR"
     CONDITION = "CONDITION"
     NOTE = "NOTE"
+    META = "META"        # scope, purpose, definitions, informational text (from simplified L3)
     HEADER = "HEADER"
     UNKNOWN = "UNKNOWN"
+
+
+class ElementType(str, Enum):
+    """Low-level docling element type within a chunk."""
+    PARAGRAPH = "paragraph"
+    TABLE = "table"
+    LIST_ITEM = "list_item"
+    FIGURE = "figure"
+    CODE = "code"
 
 
 class BPMNNodeType(str, Enum):
@@ -24,9 +35,9 @@ class BPMNNodeType(str, Enum):
 
 
 class GatewayType(str, Enum):
-    XOR = "XOR"
-    AND = "AND"
-    OR = "OR"
+    EXCLUSIVE = "EXCLUSIVE"      # exactly one branch is taken
+    PARALLEL = "PARALLEL"        # all branches run simultaneously
+    EVENT_BASED = "EVENT_BASED"  # next branch determined by which event arrives first
 
 
 class JobStatus(str, Enum):
@@ -40,69 +51,78 @@ class JobStatus(str, Enum):
 @dataclass
 class CrossRef:
     ref_text: str
-    resolved_block_id: Optional[str] = None
+    resolved_chunk_id: Optional[str] = None
     resolution_method: str = "unresolved"  # structural_anchor | llm | unresolved
 
 
 @dataclass
-class PronounResolution:
-    original_pronoun: str
-    resolved_to: str
-    confidence: float
-    method: str = "llm"
+class ChunkElement:
+    """
+    One typed item inside a StructuredChunk — the atom of Docling's output.
+    metadata holds element-specific extras (table dims, list marker, etc.).
+    """
+    element_id: str          # Docling self_ref or generated id
+    element_type: ElementType
+    text: Optional[str] = None
+    page_no: Optional[int] = None
+    metadata: dict = field(default_factory=dict)
+
+    # ── L3: Classification (element-level) ────────────────────────────────
+    block_type: Optional[BlockType] = None
+    block_type_confidence: float = 0.0
+
 
 @dataclass
-class Block:
-    block_id: str
+class StructuredChunk:
+    """
+    Primary processing unit — one logical section of the document.
+
+    Built from DoclingDocument.iterate_items() grouped by heading boundaries.
+    Everything downstream (classification, enrichment, atomization) operates
+    at this level. Fine-grained tree navigation is not needed — the chunk
+    already carries its full heading breadcrumb + all content.
+    """
+    chunk_id: str
     job_id: str
-    parent_id: Optional[str] = None
-    children_ids: list = field(default_factory=list)
 
-    raw_text: str = ""
-    heading_path: list = field(default_factory=list)
-    page_number: Optional[int] = None
-    list_depth: int = 0
-    list_index: Optional[str] = None
+    # ── Structure from Docling ─────────────────────────────────────────────
+    headings: list = field(default_factory=list)      # ["5. Pre-Joining", "5.1 Offer Docs"]
+    contextualized: str = ""                           # headings breadcrumb + all text — primary LLM input
+    elements: list = field(default_factory=list)       # list[ChunkElement]
+    page_numbers: list = field(default_factory=list)   # deduplicated page numbers spanned
 
-    block_type: Optional[BlockType] = None
-    block_type_confidence: Optional[float] = None
-    block_type_method: Optional[str] = None  # structural_skip | llm
+    # ── L3: Classification (derived from majority element block_type) ────────
+    chunk_type: Optional[BlockType] = None
+    chunk_type_confidence: float = 0.0
+    chunk_type_method: str = ""                        # llm | fallback
 
+    # ── L5: Enrichment ────────────────────────────────────────────────────
     resolved_actor: Optional[str] = None
     condition_scope: Optional[str] = None
-    cross_refs: list = field(default_factory=list)
-    pronoun_resolution: Optional[PronounResolution] = None
-    enrichment_version: int = 0
+    cross_refs: list = field(default_factory=list)     # list[CrossRef]
 
-    atomic_units: list = field(default_factory=list)
+    # ── L6: Atomization ───────────────────────────────────────────────────
+    atomic_units: list = field(default_factory=list)   # list[AtomicUnit]
+
+    # ── Review flags ──────────────────────────────────────────────────────
     needs_review: bool = False
     review_reasons: list = field(default_factory=list)
 
 
 @dataclass
-class DocumentNode:
-    heading: str
-    heading_path: list
-    level: int
-    blocks: list = field(default_factory=list)
-    children: list = field(default_factory=list)
-
-
-
-@dataclass
 class AtomicUnit:
     unit_id: str
-    block_id: str
-    sequence_in_block: int
+    chunk_id: str           # parent StructuredChunk
+    sequence_in_chunk: int
     action: str
     actor: str
+    step_type: str = "SIMPLE"  # SIMPLE | CONDITIONAL | DECISION (set by L6 atomizer)
     condition: Optional[str] = None
     output: Optional[str] = None
     is_terminal: bool = False
     is_start: bool = False
-    # Variable propagation (populated by L6, consumed by L6b + L8)
-    inputs: list = field(default_factory=list)   # variable names this unit consumes
-    outputs: list = field(default_factory=list)  # variable names this unit produces
+    inputs: list = field(default_factory=list)    # variable names consumed
+    outputs: list = field(default_factory=list)   # variable names produced
 
 
 @dataclass
@@ -133,15 +153,14 @@ class BPMNEdge:
     label: Optional[str] = None
     is_default: bool = False
     edge_type: str = "SEQUENCE_FLOW"
-    condition_variable: Optional[str] = None   # variable name tested at this branch (L8)
-    condition_value: Optional[str] = None      # expected value for the condition label
+    condition_variable: Optional[str] = None
+    condition_value: Optional[str] = None
 
 
 @dataclass
 class Actor:
     canonical_name: str
     aliases: list = field(default_factory=list)
-    source_section: str = ""
     source_method: str = "structural_extraction"
 
 
@@ -166,7 +185,7 @@ class ActorRegistry:
 @dataclass
 class SectionAnchor:
     anchor_text: str
-    block_id: str
+    chunk_id: str
     heading_path: list = field(default_factory=list)
 
 
@@ -174,25 +193,25 @@ class SectionAnchor:
 class GlossaryEntry:
     term: str
     definition: str
-    block_id: str
+    chunk_id: str
     definition_method: str = "llm"
 
 
 @dataclass
 class DataVar:
-    """Tracks a single named variable flowing through the process."""
+    """Named variable flowing through the process (produced by one unit, consumed by others)."""
     name: str
     var_type: str = "unknown"  # bool | data | id | count | unknown
     producer_unit_id: Optional[str] = None
-    consumers: list = field(default_factory=list)  # unit_ids that input this var
+    consumers: list = field(default_factory=list)
 
 
 @dataclass
 class ContextIndex:
     job_id: str
-    section_anchors: list = field(default_factory=list)
-    glossary: list = field(default_factory=list)
-    exception_blocks: list = field(default_factory=list)
+    section_anchors: list = field(default_factory=list)   # list[SectionAnchor]
+    glossary: list = field(default_factory=list)           # list[GlossaryEntry]
+    exception_chunks: list = field(default_factory=list)   # chunk_ids of EXCEPTION chunks
     actor_registry: Optional[ActorRegistry] = None
 
 
@@ -208,7 +227,7 @@ class JobError:
 class ReviewFlag:
     layer: int
     reason: str
-    block_id: Optional[str] = None
+    chunk_id: Optional[str] = None
 
 
 @dataclass
@@ -225,12 +244,12 @@ class LLMCallRecord:
 class ProcessModel:
     process_id: str
     name: str
-    blocks: list = field(default_factory=list)
+    chunks: list = field(default_factory=list)        # list[StructuredChunk] — executable chunks
     atomic_units: list = field(default_factory=list)
     data_vars: list = field(default_factory=list)
     bpmn_nodes: list = field(default_factory=list)
     bpmn_edges: list = field(default_factory=list)
-    preamble: list = field(default_factory=list)  # non-executable sections attached as context
+    preamble: list = field(default_factory=list)       # list[StructuredChunk] — context-only chunks
 
 
 @dataclass
@@ -247,8 +266,8 @@ class Job:
     review_flags: list = field(default_factory=list)
     llm_call_log: list = field(default_factory=list)
 
-    blocks: list = field(default_factory=list)
-    document_tree: list = field(default_factory=list)
+    # Primary data — StructuredChunks replace both blocks and document_tree
+    chunks: list = field(default_factory=list)         # list[StructuredChunk]
     context_index: Optional[ContextIndex] = None
     processes: list = field(default_factory=list)
-    extraction: dict = field(default_factory=dict)
+    extraction: dict = field(default_factory=dict)     # markdown + docling_document dict

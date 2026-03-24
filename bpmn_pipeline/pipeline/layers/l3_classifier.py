@@ -1,268 +1,143 @@
-"""L3 — Block Classifier: heuristic-first, then LLM for genuinely ambiguous blocks."""
+"""L3 — Element Classifier
+
+Each ChunkElement gets its own block_type via LLM.
+chunk_type on StructuredChunk is derived as majority vote so downstream layers still work.
+
+Strategy:
+  - If the whole chunk fits in the token budget → one LLM call.
+  - If not → split elements into sub-chunks at element boundaries (never mid-element),
+    each sub-chunk gets the section heading as context.
+"""
 import json
-import re
-from functools import lru_cache
-from typing import Optional
+from collections import Counter
 
-from llm.client import LLMClient
-from llm.prompts import CLASSIFY_BLOCKS_BATCH_SYSTEM, CLASSIFY_BLOCKS_BATCH_USER
-from models.schemas import Block, BlockType, Job
-from pipeline.utils.chunker import chunk_items
-from pipeline.utils.tree_builder import build_document_tree
 import config
+from llm.client import LLMClient
+from llm.prompts import CLASSIFY_ELEMENTS_SYSTEM, CLASSIFY_ELEMENTS_USER
+from models.schemas import BlockType, Job, StructuredChunk
 
-# DECISION_INLINE regex kept as a fast pre-screen (no spaCy needed for obvious cases)
-from pipeline.utils.decision_patterns import DECISION_INLINE
-
-
-# ── spaCy lazy loader ────────────────────────────────────────────────────────
-
-@lru_cache(maxsize=1)
-def _get_nlp():
-    """
-    Load spaCy 'en_core_web_sm' once. Returns None if spaCy is not installed
-    or the model is missing — the pipeline degrades gracefully to regex.
-    """
-    try:
-        import spacy  # noqa: PLC0415
-        return spacy.load("en_core_web_sm", disable=["ner", "lemmatizer"])
-    except Exception:  # ImportError, OSError (model missing), etc.
-        return None
+_CHARS_PER_TOKEN = 4
+_PROMPT_OVERHEAD_TOKENS = 350  # system prompt + fixed prompt framing
 
 
-# spaCy-based dependency signals for DECISION classification
-_MODAL_DECISION_VERBS = {"check", "determine", "verify", "assess", "confirm", "evaluate", "decide"}
-_CONDITIONAL_DEPS = {"mark", "advmod"}   # subordinating conjunctions + conditional adverbs
-_CONDITIONAL_LEMMAS = {"if", "whether", "depending", "based", "unless", "otherwise", "when"}
+def _tokens(text: str) -> int:
+    return len(text) // _CHARS_PER_TOKEN
 
 
-def _spacy_is_decision(text: str, nlp) -> bool:
-    """
-    Return True if spaCy dependency parse finds a conditional structure:
-      - A token whose lemma is in _CONDITIONAL_LEMMAS and dep_ in _CONDITIONAL_DEPS
-      - OR a modal verb (MD POS) paired with a decision-action root
-    Much more precise than a raw regex on 'if|depending|...'.
-    """
-    doc = nlp(text[:300])  # cap to keep latency low
-    for token in doc:
-        # Explicit conditional subordinators: "if", "whether", "unless", ...
-        if token.lemma_.lower() in _CONDITIONAL_LEMMAS and token.dep_ in _CONDITIONAL_DEPS:
-            return True
-        # Modal + decision-action root: "should check", "must verify"
-        if token.pos_ == "MD" and token.head.lemma_.lower() in _MODAL_DECISION_VERBS:
-            return True
-    return False
+def _make_sub_chunks(heading: str, elements: list) -> list[list]:
+    """Split elements into groups that fit within the token budget."""
+    budget = config.LLM_MAX_INPUT_TOKENS - _PROMPT_OVERHEAD_TOKENS - _tokens(heading)
+    budget = max(budget, 100)
 
+    sub_chunks, current, used = [], [], 0
+    for e in elements:
+        cost = _tokens(e.text or "") + 15  # +15 for JSON key/id overhead per element
+        if current and used + cost > budget:
+            sub_chunks.append(current)
+            current, used = [], 0
+        current.append(e)
+        used += cost
 
-def _tag_blocks_with_spacy(blocks: list) -> dict:
-    """
-    Run spaCy nlp.pipe() over all block texts in one batch pass.
-    Returns a dict { block_id: bool (is_decision) }.
-    Falls back to empty dict if spaCy unavailable.
-    """
-    nlp = _get_nlp()
-    if nlp is None:
-        return {}
+    if current:
+        sub_chunks.append(current)
 
-    texts = [b.raw_text[:300] for b in blocks]
-    results: dict[str, bool] = {}
-    for b, doc in zip(blocks, nlp.pipe(texts, batch_size=64)):
-        is_decision = False
-        for token in doc:
-            if token.lemma_.lower() in _CONDITIONAL_LEMMAS and token.dep_ in _CONDITIONAL_DEPS:
-                is_decision = True
-                break
-            if token.pos_ == "MD" and token.head.lemma_.lower() in _MODAL_DECISION_VERBS:
-                is_decision = True
-                break
-        results[b.block_id] = is_decision
-    return results
-
-
-# ── Heading keywords that strongly imply a block type ────────────────────────
-_ACTOR_HEADINGS = re.compile(
-    r'\b(roles?|actors?|responsible|performed by|owned by|stakeholders?)\b', re.I
-)
-_CONDITION_HEADINGS = re.compile(
-    r'\b(scope|purpose|applicability|prerequisites?|preconditions?|assumptions?)\b', re.I
-)
-_EXCEPTION_HEADINGS = re.compile(
-    r'\b(exception|escalation|error|failure|fallback|alternative)\b', re.I
-)
-
-# Inline text patterns that strongly hint at NOTE
-_NOTE_PATTERNS = re.compile(r'^(note[:\s]|tip[:\s]|warning[:\s]|important[:\s])', re.I)
-
-
-def _heuristic_classify(block: Block) -> tuple[BlockType, float] | None:
-    """
-    Return (BlockType, confidence) if a rule matches, else None (needs LLM).
-    Handles approximately 70% of blocks without LLM.
-    """
-    text = block.raw_text.strip()
-    heading_path_str = " > ".join(block.heading_path).lower()
-
-    if not text:
-        return BlockType.NOTE, 1.0
-
-    # Heading-path signals — very high confidence
-    if _ACTOR_HEADINGS.search(heading_path_str):
-        return BlockType.ACTOR, 0.9
-    if _CONDITION_HEADINGS.search(heading_path_str):
-        return BlockType.CONDITION, 0.9
-    if _EXCEPTION_HEADINGS.search(heading_path_str):
-        return BlockType.EXCEPTION, 0.88
-
-    # Inline note prefix
-    if _NOTE_PATTERNS.match(text):
-        return BlockType.NOTE, 0.95
-
-    # Inline decision pattern — mark as DECISION but lower confidence (LLM confirms)
-    if DECISION_INLINE.search(text):
-        return BlockType.DECISION, 0.75  # still LLM-worthy; returned as hint only
-
-    return None  # ambiguous → needs LLM
+    return sub_chunks
 
 
 def run(job: Job) -> None:
-    job.document_tree = build_document_tree(job.blocks)
     llm = LLMClient(job)
 
-    ambiguous_blocks: list[Block] = []
+    for chunk in job.chunks:
+        text_elements = [e for e in chunk.elements if e.text and e.text.strip()]
 
-    # Pass 1: Classify structurally obvious blocks
-    all_content_blocks = [
-        b for b in job.blocks
-        if b.block_type != BlockType.HEADER and b.raw_text.strip()
-    ]
-
-    # Pre-pass: spaCy batch tagging for DECISION identification
-    # This runs one tokenisation pass over all blocks — O(n) not O(n * LLM calls)
-    spacy_decisions = _tag_blocks_with_spacy(all_content_blocks)
-
-    for b in all_content_blocks:
-        result = _heuristic_classify(b)
-        if result is not None:
-            btype, conf = result
-            # DECISION heuristic still gets LLM confirmation (lower threshold)
-            if btype == BlockType.DECISION and conf < 0.85:
-                # Upgrade confidence if spaCy also agrees
-                if spacy_decisions.get(b.block_id, False):
-                    b.block_type = BlockType.DECISION
-                    b.block_type_confidence = 0.88
-                    b.block_type_method = "spacy+regex"
-                else:
-                    b._heuristic_hint = btype  # store hint for LLM prompt
-                    ambiguous_blocks.append(b)
-            else:
-                b.block_type = btype
-                b.block_type_confidence = conf
-                b.block_type_method = "structural"
-        else:
-            # No heuristic match — check spaCy before sending to LLM
-            if spacy_decisions.get(b.block_id, False):
-                b.block_type = BlockType.DECISION
-                b.block_type_confidence = 0.82
-                b.block_type_method = "spacy"
-            else:
-                ambiguous_blocks.append(b)
-
-    if not ambiguous_blocks:
-        return
-
-    # Pass 2: LLM for ambiguous blocks, batched in section-scoped windows
-    # Group by section so cross-block context is coherent
-    section_groups: dict[str, list[Block]] = {}
-
-    for b in all_content_blocks:
-        key = " > ".join(b.heading_path) if b.heading_path else "root"
-        section_groups.setdefault(key, [])
-        section_groups[key].append(b)
-
-    # Pass 2: one LLM call per token batch — true batch classification
-    for heading_key, group in section_groups.items():
-        ambiguous_in_group = [b for b in group if b in ambiguous_blocks or id(b) in {id(x) for x in ambiguous_blocks}]
-        if not ambiguous_in_group:
+        if not text_elements:
+            chunk.chunk_type = BlockType.NOTE
+            chunk.chunk_type_confidence = 1.0
+            chunk.chunk_type_method = "fallback"
             continue
 
-        def _serialize(b: Block) -> str:
-            obj = {"block_id": b.block_id, "text": b.raw_text[:500]}
-            hint = getattr(b, "_heuristic_hint", None)
-            if hint is not None:
-                obj["heuristic_hint"] = f"regex suggests {getattr(hint, 'value', hint)}"
-            return json.dumps(obj, separators=(",", ":"))
+        heading = " > ".join(chunk.headings) if chunk.headings else "root"
+        for sub in _make_sub_chunks(heading, text_elements):
+            _classify_elements(llm, job, heading, sub)
 
-        batches = chunk_items(
-            ambiguous_in_group,
-            serialize_fn=_serialize,
-            max_tokens=config.LLM_MAX_INPUT_TOKENS - 450,
-            overlap=config.LLM_OVERLAP_ITEMS,
+        _derive_chunk_type(chunk)
+
+    _ensure_all_typed(job.chunks)
+
+
+def _classify_elements(llm: LLMClient, job: Job, heading: str, elements: list) -> None:
+    payload = [{"element_id": e.element_id, "text": e.text or ""} for e in elements]
+
+    result = llm.call(
+        layer=3,
+        template_name="CLASSIFY_ELEMENTS",
+        system_prompt=CLASSIFY_ELEMENTS_SYSTEM,
+        user_prompt=CLASSIFY_ELEMENTS_USER.format(
+            sop_class=job.sop_class,
+            section_heading=heading,
+            elements_json=json.dumps(payload, indent=2),
+        ),
+    )
+
+    rows = result if isinstance(result, list) else ([result] if isinstance(result, dict) else [])
+    by_id = {row.get("element_id"): row for row in rows if row.get("element_id")}
+
+    for e in elements:
+        row = by_id.get(e.element_id)
+        if row:
+            try:
+                e.block_type = BlockType(row.get("block_type", "UNKNOWN"))
+            except ValueError:
+                e.block_type = BlockType.UNKNOWN
+            e.block_type_confidence = float(row.get("confidence", 0.0))
+        else:
+            e.block_type = BlockType.UNKNOWN
+            e.block_type_confidence = 0.0
+
+
+def _derive_chunk_type(chunk: StructuredChunk) -> None:
+    """Majority vote across element block_types, ignoring NOTE/UNKNOWN."""
+    typed = [
+        e.block_type for e in chunk.elements
+        if e.block_type and e.block_type not in (
+            BlockType.NOTE, BlockType.META, BlockType.HEADER, BlockType.UNKNOWN
         )
+    ]
+    if typed:
+        majority = Counter(typed).most_common(1)[0][0]
+        chunk.chunk_type = majority
+        chunk.chunk_type_confidence = typed.count(majority) / len(typed)
+    else:
+        all_typed = [e.block_type for e in chunk.elements if e.block_type]
+        chunk.chunk_type = Counter(all_typed).most_common(1)[0][0] if all_typed else BlockType.UNKNOWN
+        chunk.chunk_type_confidence = 0.0
+    chunk.chunk_type_method = "llm"
 
-        for batch in batches:
-            payload = []
-            for b in batch:
-                item = {"block_id": b.block_id, "text": b.raw_text[:500]}
-                hint = getattr(b, "_heuristic_hint", None)
-                if hint is not None:
-                    item["heuristic_hint"] = f"regex suggests {getattr(hint, 'value', hint)}"
-                payload.append(item)
 
-            result = llm.call(
-                layer=3,
-                template_name="CLASSIFY_BLOCKS_BATCH",
-                system_prompt=CLASSIFY_BLOCKS_BATCH_SYSTEM,
-                user_prompt=CLASSIFY_BLOCKS_BATCH_USER.format(
-                    sop_class=job.sop_class,
-                    section_heading=heading_key,
-                    blocks_json=json.dumps(payload, indent=2),
-                ),
-            )
-
-            by_id: dict[str, dict] = {}
-            rows = result
-            if isinstance(result, dict) and "block_id" in result:
-                rows = [result]
-            if rows and isinstance(rows, list):
-                for item in rows:
-                    bid = item.get("block_id")
-                    if bid:
-                        by_id[bid] = item
-
-            for b in batch:
-                item = by_id.get(b.block_id)
-                if item:
-                    try:
-                        btype = BlockType(item.get("block_type", "UNKNOWN"))
-                    except ValueError:
-                        btype = BlockType.UNKNOWN
-                    b.block_type = btype
-                    b.block_type_confidence = float(item.get("confidence", 0.0))
-                    b.block_type_method = "llm"
-                else:
-                    b.block_type = BlockType.UNKNOWN
-                    b.block_type_confidence = 0.0
-                    b.block_type_method = "llm_failed"
-
-    # Ensure every block has a type
-    for b in job.blocks:
-        if b.block_type is None:
-            b.block_type = BlockType.UNKNOWN
-            b.block_type_confidence = 0.0
-            b.block_type_method = "fallback"
+def _ensure_all_typed(chunks: list) -> None:
+    for chunk in chunks:
+        if chunk.chunk_type is None:
+            chunk.chunk_type = BlockType.UNKNOWN
+            chunk.chunk_type_confidence = 0.0
+            chunk.chunk_type_method = "fallback"
+        for e in chunk.elements:
+            if e.block_type is None:
+                e.block_type = BlockType.UNKNOWN
+                e.block_type_confidence = 0.0
 
 
 def validate_gate(job: Job) -> None:
-    steps = [b for b in job.blocks if b.block_type == BlockType.STEP]
-    if not steps:
-        raise LayerError("L3_NO_STEPS_FOUND", "No STEP blocks found.")
+    all_elements = [e for chunk in job.chunks for e in chunk.elements if e.text and e.text.strip()]
+    if not any(e.block_type == BlockType.STEP for e in all_elements):
+        raise LayerError("L3_NO_STEPS_FOUND", "No STEP elements found.")
 
-    llm_classified = [b for b in job.blocks if b.block_type_method == "llm"]
-    unknown = [b for b in llm_classified if b.block_type == BlockType.UNKNOWN]
-    if llm_classified and (len(unknown) / len(llm_classified)) >= 0.2:
-        for b in unknown:
-            b.needs_review = True
-            b.review_reasons.append("Block type could not be classified")
+    unknown = [e for e in all_elements if e.block_type == BlockType.UNKNOWN]
+    if all_elements and (len(unknown) / len(all_elements)) >= 0.2:
+        for chunk in job.chunks:
+            for e in chunk.elements:
+                if e.block_type == BlockType.UNKNOWN:
+                    chunk.needs_review = True
+                    chunk.review_reasons.append(f"Element {e.element_id} could not be classified")
         raise SoftGateFailure("L3_HIGH_UNKNOWN_RATE", "UNKNOWN rate >= 20%")
 
 

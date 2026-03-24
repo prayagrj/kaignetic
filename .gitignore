@@ -4,3 +4,5 @@ __pycache__/
 *.pyc
 .vscode/
 .env
+bpmn_pipeline/bpmn_pipeline/outputs
+outputs

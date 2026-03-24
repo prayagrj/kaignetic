@@ -1,0 +1,1 @@
+{"result": [{"block_id": "f7183a57", "block_type": "DECISION", "confidence": 0.92, "reasoning": "The block begins with an 'If' clause introducing a conditional branch, indicating a decision point that determines whether the subsequent steps apply."}], "input_tokens": 460, "output_tokens": 268}

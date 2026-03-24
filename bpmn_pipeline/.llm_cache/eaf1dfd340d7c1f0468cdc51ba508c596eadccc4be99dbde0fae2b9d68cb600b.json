@@ -1,0 +1,1 @@
+{"result": [{"block_id": "0e00fc2e", "block_type": "DECISION", "confidence": 0.78, "reasoning": "The text contains a clear conditional clause starting with \"If\", indicating a branching point, which outweighs the surrounding procedural statements."}], "input_tokens": 463, "output_tokens": 268}

@@ -1,0 +1,1 @@
+{"result": [{"block_id": "90f51215", "block_type": "ACTOR", "confidence": 0.95, "reasoning": "The text lists roles (HR Business Partner, Hiring Manager, IT Helpdesk, Finance Team, Employee) and describes their responsibilities, which matches the ACTOR category; no conditional or action\u2011oriented language is present."}], "input_tokens": 454, "output_tokens": 269}

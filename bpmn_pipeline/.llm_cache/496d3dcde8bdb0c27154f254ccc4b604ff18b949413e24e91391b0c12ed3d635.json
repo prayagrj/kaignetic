@@ -1,0 +1,1 @@
+{"result": [{"block_id": "bd90241f", "block_type": "DECISION", "confidence": 0.85, "reasoning": "The text begins with an 'If' clause introducing a conditional branch and later references another conditional ('If the deferral is approved'), indicating decision points rather than a single action step."}], "input_tokens": 466, "output_tokens": 274}

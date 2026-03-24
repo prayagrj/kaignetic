@@ -1,0 +1,1 @@
+{"result": [{"block_id": "78e3993a", "block_type": "DECISION", "confidence": 0.88, "reasoning": "The block opens with an \"If\" clause, indicating a branching condition, and the heuristic hint also points to DECISION."}], "input_tokens": 467, "output_tokens": 213}

@@ -1,0 +1,1 @@
+{"result": [{"block_id": "035e11c4", "block_type": "DECISION", "confidence": 0.78, "reasoning": "The text ends with an 'If' clause, indicating a branching condition, which outweighs the preceding action statements."}], "input_tokens": 456, "output_tokens": 318}

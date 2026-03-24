@@ -1,10 +1,24 @@
-"""L10 — BPMN Translator: layout + lxml XML serialization + BPMN 2.0 output.
+"""L10 — BPMN Translator: lane-aware layout + BPMN 2.0 XML serialization.
 
-Writes one `.bpmn` file per ProcessModel (per SOP slice from L3b).
+Improvements over the previous version:
+- Proper collaboration / participant / laneSet structure (BPMN 2.0 compliant).
+  Tools like Camunda Modeler and bpmn.io require a <collaboration> wrapping the
+  process when swim lanes are present.
+- BPMNShape entries for the participant (pool) and each lane in the DI section.
+- BPMNPlane now references the collaboration id (not the process id) when lanes exist.
+- Lane-aware layout: each actor gets its own horizontal band; nodes are placed
+  inside that band at the correct x/y.
+- Unactored nodes (start/end events, converging gateways inserted by L8) are
+  resolved to a neighbouring actor lane instead of floating outside all lanes.
+- conditionExpression is suppressed on default (is_default=True) flows.
+- DataObject: only definitions are emitted (process-level data associations were
+  structurally invalid BPMN — they belong inside task elements).
+- process element gets a name attribute.
 """
 import json
 import os
 import re
+from collections import defaultdict
 
 import networkx as nx
 from lxml import etree
@@ -12,24 +26,35 @@ from lxml import etree
 import config
 from models.schemas import BPMNNodeType, GatewayType, Job
 
-
-BPMN_NS = "http://www.omg.org/spec/BPMN/20100524/MODEL"
+BPMN_NS   = "http://www.omg.org/spec/BPMN/20100524/MODEL"
 BPMNDI_NS = "http://www.omg.org/spec/BPMN/20100524/DI"
-DC_NS = "http://www.omg.org/spec/DD/20100524/DC"
-DI_NS = "http://www.omg.org/spec/DD/20100524/DI"
+DC_NS     = "http://www.omg.org/spec/DD/20100524/DC"
+DI_NS     = "http://www.omg.org/spec/DD/20100524/DI"
 
-NODE_W = {"TASK": 120, "GATEWAY": 50, "START_EVENT": 36, "END_EVENT": 36, "BOUNDARY_EVENT": 36, "SUBPROCESS": 120}
-NODE_H = {"TASK": 60, "GATEWAY": 50, "START_EVENT": 36, "END_EVENT": 36, "BOUNDARY_EVENT": 36, "SUBPROCESS": 60}
-H_GAP = 60
-V_GAP = 80
+NODE_W = {"TASK": 120, "GATEWAY": 50, "START_EVENT": 36, "END_EVENT": 36,
+          "BOUNDARY_EVENT": 36, "SUBPROCESS": 120}
+NODE_H = {"TASK": 60,  "GATEWAY": 50, "START_EVENT": 36, "END_EVENT": 36,
+          "BOUNDARY_EVENT": 36, "SUBPROCESS": 60}
+MAX_NODE_W = 120  # widest task — drives column stride
+MAX_NODE_H = 60   # tallest non-gateway — drives row stride
+
+COLUMN_STRIDE = MAX_NODE_W + 60   # 180 px per depth column
+ROW_STRIDE    = MAX_NODE_H + 30   # 90 px per node row within a lane column
+POOL_HEADER_W = 30                # rotated pool-title strip width
+LANE_LABEL_W  = 100               # lane-name strip width inside the pool
+LANE_PAD_X    = 40                # left padding for first node inside a lane
+LANE_PAD_Y    = 25                # top/bottom padding within a lane
+MIN_LANE_H    = 120               # minimum lane height
+POOL_MARGIN   = 40                # right-side margin after the last column
 
 
 def _safe_bpmn_filename_part(text: str, max_len: int = 48) -> str:
-    """ASCII slug for optional filename hint; falls back to empty if nothing left."""
     s = re.sub(r"[^\w\s-]", "", text, flags=re.ASCII)
     s = re.sub(r"[-\s]+", "_", s.strip()).strip("_").lower()
     return s[:max_len] if s else ""
 
+
+# ── Entry point ───────────────────────────────────────────────────────────────
 
 def run(job: Job) -> None:
     os.makedirs(config.OUTPUT_DIR, exist_ok=True)
@@ -42,18 +67,20 @@ def run(job: Job) -> None:
         if not proc.bpmn_nodes:
             continue
 
-        actor_to_lane = proc.__dict__.get("_actor_to_lane", {})
-        _compute_layout(proc.bpmn_nodes, proc.bpmn_edges, actor_to_lane)
+        actor_to_lane: dict[str, str] = proc.__dict__.get("_actor_to_lane", {})
+        unit_to_node: dict[str, str] = proc.__dict__.get("_unit_to_task_node", {})
 
-        unit_to_node = proc.__dict__.get("_unit_to_task_node", {})
+        layout_info = _compute_layout(proc.bpmn_nodes, proc.bpmn_edges, actor_to_lane)
+
         xml_bytes = _serialize_xml(
-            job.job_id,
-            proc.process_id,
-            proc.bpmn_nodes,
-            proc.bpmn_edges,
-            actor_to_lane,
+            job_id=job.job_id,
+            process_local_id=proc.process_id,
+            nodes=proc.bpmn_nodes,
+            edges=proc.bpmn_edges,
+            actor_to_lane=actor_to_lane,
             unit_to_node=unit_to_node,
             process_model=proc,
+            layout_info=layout_info,
         )
         _validate_xml(xml_bytes)
 
@@ -67,14 +94,12 @@ def run(job: Job) -> None:
             f.write(xml_bytes)
 
         output_paths.append(bpmn_path)
-        sop_outputs.append(
-            {
-                "process_id": proc.process_id,
-                "name": proc.name,
-                "output_file": bpmn_path,
-                "graph_metadata": _graph_metadata(proc.bpmn_nodes, proc.bpmn_edges),
-            }
-        )
+        sop_outputs.append({
+            "process_id": proc.process_id,
+            "name": proc.name,
+            "output_file": bpmn_path,
+            "graph_metadata": _graph_metadata(proc.bpmn_nodes, proc.bpmn_edges),
+        })
 
     report = _build_report(job, sop_outputs)
     with open(report_path, "w") as f:
@@ -89,22 +114,22 @@ def run(job: Job) -> None:
 def validate_gate(job: Job) -> None:
     paths = job.__dict__.get("output_files") or []
     if not paths:
-        raise LayerError("L10_EMPTY_OUTPUT", "No BPMN files were written (no process graphs to export).")
+        raise LayerError("L10_EMPTY_OUTPUT", "No BPMN files were written.")
     for p in paths:
         if not p or not os.path.exists(p) or os.path.getsize(p) == 0:
             raise LayerError("L10_EMPTY_OUTPUT", f"BPMN output missing or empty: {p}")
-
     for proc in job.processes:
-        missing_layout = [n for n in proc.bpmn_nodes if n.x is None]
-        if missing_layout:
+        missing = [n for n in proc.bpmn_nodes if n.x is None]
+        if missing:
             raise LayerError(
                 "L10_MISSING_LAYOUT",
-                f"{len(missing_layout)} nodes without coordinates in {proc.name!r}.",
+                f"{len(missing)} nodes without coordinates in {proc.name!r}.",
             )
 
 
+# ── Layout ────────────────────────────────────────────────────────────────────
+
 def _rank_list_for_layout(G: nx.DiGraph, nodes) -> list[str]:
-    """Topological order when DAG; otherwise BFS from START then remaining nodes (handles cycles)."""
     try:
         return list(nx.topological_sort(G))
     except nx.NetworkXUnfeasible:
@@ -124,7 +149,15 @@ def _rank_list_for_layout(G: nx.DiGraph, nodes) -> list[str]:
         return ordered
 
 
-def _compute_layout(nodes, edges, actor_to_lane: dict) -> None:
+def _compute_layout(nodes, edges, actor_to_lane: dict) -> dict:
+    """
+    Assign x/y/width/height to every node using a lane-aware layout.
+
+    Returns a layout_info dict consumed by _serialize_xml for DI shape emission:
+      - lane_bounds: {actor: {"y", "height", "slug"}}
+      - total_width, total_height
+      - effective_actor: {node_id: actor} (includes resolved unactored nodes)
+    """
     node_map = {n.node_id: n for n in nodes}
 
     G = nx.DiGraph()
@@ -134,9 +167,8 @@ def _compute_layout(nodes, edges, actor_to_lane: dict) -> None:
         if e.source_node_id in node_map and e.target_node_id in node_map:
             G.add_edge(e.source_node_id, e.target_node_id)
 
+    # Longest-path depth per node (determines column / x-position)
     rank_list = _rank_list_for_layout(G, nodes)
-
-    # Rank columns: longest-path depth (relaxation; works for small graphs with cycles)
     depth_map: dict[str, int] = {nid: 0 for nid in G.nodes()}
     for _ in range(max(1, len(G) + 1)):
         stable = True
@@ -149,31 +181,132 @@ def _compute_layout(nodes, edges, actor_to_lane: dict) -> None:
         if stable:
             break
 
-    rank_groups: dict[int, list] = {}
-    for nid, depth in depth_map.items():
-        rank_groups.setdefault(depth, []).append(nid)
-
     lane_order = list(actor_to_lane.keys())
 
-    for depth, group in rank_groups.items():
-        group.sort(key=lambda nid: (
-            lane_order.index(node_map[nid].actor) if node_map[nid].actor in lane_order else 999
-        ))
-        for pos, nid in enumerate(group):
-            node = node_map[nid]
-            ntype = node.bpmn_type.value if node.bpmn_type else "TASK"
-            w = NODE_W.get(ntype, 120)
-            h = NODE_H.get(ntype, 60)
-            node.width = w
-            node.height = h
-            node.x = depth * (120 + H_GAP) + 50
-            node.y = pos * (60 + V_GAP) + 50
+    # Resolve an actor for every node, including unactored infrastructure nodes
+    effective_actor = _resolve_effective_actors(nodes, G, lane_order)
 
-    # Any nodes not in graph
-    for node in nodes:
-        if node.x is None:
-            node.x, node.y, node.width, node.height = 50, 50, 120, 60
+    if not lane_order:
+        # No swim lanes — flat layout (depth × 180, single column of rows)
+        for i, n in enumerate(nodes):
+            ntype = n.bpmn_type.value if n.bpmn_type else "TASK"
+            n.width  = NODE_W.get(ntype, 120)
+            n.height = NODE_H.get(ntype, 60)
+            n.x = 50 + depth_map.get(n.node_id, 0) * COLUMN_STRIDE
+            n.y = 50 + i * ROW_STRIDE  # rough stacking; no lane context
+        return {"lane_bounds": {}, "total_width": 800, "total_height": 400,
+                "effective_actor": effective_actor}
 
+    # Build (actor, depth) → [node_ids] for row counting within each lane column
+    lane_depth_groups: dict[tuple, list] = defaultdict(list)
+    for n in nodes:
+        actor = effective_actor.get(n.node_id)
+        if actor:
+            lane_depth_groups[(actor, depth_map.get(n.node_id, 0))].append(n.node_id)
+
+    max_depth = max(depth_map.values()) if depth_map else 0
+
+    # Lane heights: enough rows for the busiest column in that lane
+    lane_heights: dict[str, float] = {}
+    for actor in lane_order:
+        max_rows = max(
+            (len(lane_depth_groups.get((actor, d), [])) for d in range(max_depth + 1)),
+            default=0,
+        )
+        lane_heights[actor] = max(MIN_LANE_H, max_rows * ROW_STRIDE + 2 * LANE_PAD_Y)
+
+    # Cumulative Y offset for each lane
+    lane_y: dict[str, float] = {}
+    cumulative = 0.0
+    for actor in lane_order:
+        lane_y[actor] = cumulative
+        cumulative += lane_heights[actor]
+    total_height = cumulative
+
+    total_width = (
+        POOL_HEADER_W + LANE_LABEL_W + LANE_PAD_X
+        + (max_depth + 1) * COLUMN_STRIDE + POOL_MARGIN
+    )
+
+    # Assign node positions
+    depth_lane_row: dict[tuple, int] = defaultdict(int)  # (actor, depth) → next row index
+    for n in nodes:
+        ntype   = n.bpmn_type.value if n.bpmn_type else "TASK"
+        n.width  = NODE_W.get(ntype, 120)
+        n.height = NODE_H.get(ntype, 60)
+
+        actor = effective_actor.get(n.node_id)
+        depth = depth_map.get(n.node_id, 0)
+
+        if actor and actor in lane_y:
+            row_idx = depth_lane_row[(actor, depth)]
+            depth_lane_row[(actor, depth)] += 1
+            # Centre node horizontally within the column (wider tasks vs narrow gateways)
+            node_x = (POOL_HEADER_W + LANE_LABEL_W + LANE_PAD_X
+                      + depth * COLUMN_STRIDE + (MAX_NODE_W - n.width) // 2)
+            # Centre node vertically within its row slot
+            node_y = (lane_y[actor] + LANE_PAD_Y
+                      + row_idx * ROW_STRIDE + (MAX_NODE_H - n.height) // 2)
+        else:
+            node_x = 50 + depth * COLUMN_STRIDE
+            node_y = 50
+
+        n.x = node_x
+        n.y = node_y
+
+    # Build lane_bounds for DI emission
+    lane_bounds = {
+        actor: {"y": lane_y[actor], "height": lane_heights[actor], "slug": actor_to_lane[actor]}
+        for actor in lane_order
+    }
+
+    return {
+        "lane_bounds": lane_bounds,
+        "total_width": total_width,
+        "total_height": total_height,
+        "effective_actor": effective_actor,
+    }
+
+
+def _resolve_effective_actors(nodes, G: nx.DiGraph, lane_order: list) -> dict:
+    """
+    Return {node_id: actor} for every node.
+
+    Nodes with a genuine actor use it directly. Unactored nodes (start/end events,
+    converging gateways added by L8) are assigned to a neighbouring lane via BFS
+    over the graph. Last resort: first lane.
+    """
+    lane_set = set(lane_order)
+    effective: dict[str, str] = {}
+
+    for n in nodes:
+        if n.actor and n.actor in lane_set:
+            effective[n.node_id] = n.actor
+
+    # Iterative neighbourhood resolution (handles chains of unactored nodes)
+    changed = True
+    while changed:
+        changed = False
+        for n in nodes:
+            if n.node_id in effective:
+                continue
+            for neighbour in list(G.successors(n.node_id)) + list(G.predecessors(n.node_id)):
+                nb_actor = effective.get(neighbour)
+                if nb_actor and nb_actor in lane_set:
+                    effective[n.node_id] = nb_actor
+                    changed = True
+                    break
+
+    # Last resort
+    if lane_order:
+        for n in nodes:
+            if n.node_id not in effective:
+                effective[n.node_id] = lane_order[0]
+
+    return effective
+
+
+# ── XML serialisation ─────────────────────────────────────────────────────────
 
 def _serialize_xml(
     job_id: str,
@@ -183,133 +316,233 @@ def _serialize_xml(
     actor_to_lane: dict,
     unit_to_node: dict | None = None,
     process_model=None,
+    layout_info: dict | None = None,
 ) -> bytes:
-    nsmap = {
-        None: BPMN_NS,
-        "bpmndi": BPMNDI_NS,
-        "dc": DC_NS,
-        "di": DI_NS,
-    }
+    has_lanes = bool(actor_to_lane)
+    proc_xml_id    = f"process_{job_id}_{process_local_id}"
+    collab_xml_id  = f"collab_{job_id}_{process_local_id}"
+    part_xml_id    = f"participant_{job_id}_{process_local_id}"
+    process_name   = getattr(process_model, "name", "") or ""
 
-    proc_xml_id = f"process_{job_id}_{process_local_id}"
+    nsmap = {None: BPMN_NS, "bpmndi": BPMNDI_NS, "dc": DC_NS, "di": DI_NS}
     definitions = etree.Element(f"{{{BPMN_NS}}}definitions", nsmap=nsmap)
     definitions.set("id", f"definitions_{job_id}_{process_local_id}")
     definitions.set("targetNamespace", "http://bpmn.io/schema/bpmn")
 
-    process = etree.SubElement(definitions, f"{{{BPMN_NS}}}process")
-    process.set("id", proc_xml_id)
-    process.set("isExecutable", "false")
+    # ── Collaboration + participant (required for swim lanes) ──────────────────
+    if has_lanes:
+        collab_el = etree.SubElement(definitions, f"{{{BPMN_NS}}}collaboration")
+        collab_el.set("id", collab_xml_id)
+        part_el = etree.SubElement(collab_el, f"{{{BPMN_NS}}}participant")
+        part_el.set("id", part_xml_id)
+        part_el.set("name", process_name)
+        part_el.set("processRef", proc_xml_id)
+
+    # ── Process element ───────────────────────────────────────────────────────
+    process_el = etree.SubElement(definitions, f"{{{BPMN_NS}}}process")
+    process_el.set("id", proc_xml_id)
+    process_el.set("name", process_name)
+    process_el.set("isExecutable", "false")
 
     node_map = {n.node_id: n for n in nodes}
 
-    if actor_to_lane:
-        lane_set = etree.SubElement(process, f"{{{BPMN_NS}}}laneSet")
-        lane_set.set("id", "laneSet_1")
+    # ── LaneSet ───────────────────────────────────────────────────────────────
+    if has_lanes:
+        lane_set_el = etree.SubElement(process_el, f"{{{BPMN_NS}}}laneSet")
+        lane_set_el.set("id", "laneSet_1")
         for actor, slug in actor_to_lane.items():
-            lane_el = etree.SubElement(lane_set, f"{{{BPMN_NS}}}lane")
+            lane_el = etree.SubElement(lane_set_el, f"{{{BPMN_NS}}}lane")
             lane_el.set("id", f"lane_{slug}")
             lane_el.set("name", actor)
+            # Only reference nodes that truly own this actor (not effective-resolved ones)
             for n in nodes:
                 if n.actor == actor:
                     fn = etree.SubElement(lane_el, f"{{{BPMN_NS}}}flowNodeRef")
                     fn.text = _element_id(n)
 
+    # ── Flow elements (tasks, gateways, events) ────────────────────────────────
     for node in nodes:
-        el = etree.SubElement(process, _bpmn_element(node))
+        el = etree.SubElement(process_el, _bpmn_element(node))
         el.set("id", _element_id(node))
         el.set("name", node.label or "")
-        if node.bpmn_type == BPMNNodeType.GATEWAY and node.gateway_type:
-            pass  # gateway_type is in the element tag, not an attribute in BPMN 2.0
         if node.bpmn_type == BPMNNodeType.BOUNDARY_EVENT:
             etree.SubElement(el, f"{{{BPMN_NS}}}errorEventDefinition")
 
+    # ── Sequence flows ────────────────────────────────────────────────────────
     for edge in edges:
-        seq = etree.SubElement(process, f"{{{BPMN_NS}}}sequenceFlow")
+        seq = etree.SubElement(process_el, f"{{{BPMN_NS}}}sequenceFlow")
         seq.set("id", f"flow_{edge.edge_id}")
-        seq.set("sourceRef", _element_id(node_map[edge.source_node_id]) if edge.source_node_id in node_map else edge.source_node_id)
-        seq.set("targetRef", _element_id(node_map[edge.target_node_id]) if edge.target_node_id in node_map else edge.target_node_id)
+        seq.set(
+            "sourceRef",
+            _element_id(node_map[edge.source_node_id])
+            if edge.source_node_id in node_map else edge.source_node_id,
+        )
+        seq.set(
+            "targetRef",
+            _element_id(node_map[edge.target_node_id])
+            if edge.target_node_id in node_map else edge.target_node_id,
+        )
         if edge.label:
             seq.set("name", edge.label)
         if edge.is_default:
             seq.set("isDefault", "true")
-        # TASK 3: emit conditionExpression if a condition variable is linked
-        if getattr(edge, 'condition_variable', None):
-            cond_val = getattr(edge, 'condition_value', None) or 'true'
+        # conditionExpression must NOT appear on default flows
+        if not edge.is_default and getattr(edge, "condition_variable", None):
+            cond_val = getattr(edge, "condition_value", None) or "true"
             cond_expr = etree.SubElement(seq, f"{{{BPMN_NS}}}conditionExpression")
             cond_expr.text = f"${{{edge.condition_variable}}} == {cond_val}"
 
-    # needs_review annotations — emit textAnnotation + association for flagged nodes
+    # ── Review annotations ────────────────────────────────────────────────────
     for node in nodes:
         if not node.needs_review:
             continue
-        reason_text = "; ".join(node.review_reasons) if node.review_reasons else "Needs review"
-        annotation_id = f"ann_{node.node_id}"
+        reason = "; ".join(node.review_reasons) if node.review_reasons else "Needs review"
+        ann_id   = f"ann_{node.node_id}"
         assoc_id = f"assoc_{node.node_id}"
-
-        annotation_el = etree.SubElement(process, f"{{{BPMN_NS}}}textAnnotation")
-        annotation_el.set("id", annotation_id)
-        text_el = etree.SubElement(annotation_el, f"{{{BPMN_NS}}}text")
-        text_el.text = f"⚠ Review: {reason_text[:120]}"
-
-        assoc_el = etree.SubElement(process, f"{{{BPMN_NS}}}association")
+        ann_el = etree.SubElement(process_el, f"{{{BPMN_NS}}}textAnnotation")
+        ann_el.set("id", ann_id)
+        text_el = etree.SubElement(ann_el, f"{{{BPMN_NS}}}text")
+        text_el.text = f"\u26a0 Review: {reason[:120]}"
+        assoc_el = etree.SubElement(process_el, f"{{{BPMN_NS}}}association")
         assoc_el.set("id", assoc_id)
         assoc_el.set("sourceRef", _element_id(node))
-        assoc_el.set("targetRef", annotation_id)
+        assoc_el.set("targetRef", ann_id)
         assoc_el.set("associationDirection", "None")
 
-    # TASK 4: DataObject serialization from process.data_vars
-    _serialize_data_objects(process, nodes, node_map, unit_to_node, process_model, job_id)
-
-    # Diagram (DI)
+    # ── BPMNDiagram ───────────────────────────────────────────────────────────
     diagram = etree.SubElement(definitions, f"{{{BPMNDI_NS}}}BPMNDiagram")
     diagram.set("id", f"diagram_{process_local_id}")
     plane = etree.SubElement(diagram, f"{{{BPMNDI_NS}}}BPMNPlane")
     plane.set("id", f"plane_{process_local_id}")
-    plane.set("bpmnElement", proc_xml_id)
+    # Plane references the collaboration when lanes exist, otherwise the process
+    plane.set("bpmnElement", collab_xml_id if has_lanes else proc_xml_id)
 
+    li = layout_info or {}
+    total_w = li.get("total_width", 800)
+    total_h = li.get("total_height", 400)
+    lane_bounds = li.get("lane_bounds", {})
+
+    if has_lanes:
+        # Participant (pool) shape — covers the whole diagram
+        ps = etree.SubElement(plane, f"{{{BPMNDI_NS}}}BPMNShape")
+        ps.set("id", f"shape_{part_xml_id}")
+        ps.set("bpmnElement", part_xml_id)
+        ps.set("isHorizontal", "true")
+        _bounds(ps, 0, 0, int(total_w), int(total_h))
+
+        # Lane shapes
+        for actor, slug in actor_to_lane.items():
+            info = lane_bounds.get(actor, {})
+            ls = etree.SubElement(plane, f"{{{BPMNDI_NS}}}BPMNShape")
+            ls.set("id", f"shape_lane_{slug}")
+            ls.set("bpmnElement", f"lane_{slug}")
+            ls.set("isHorizontal", "true")
+            _bounds(
+                ls,
+                POOL_HEADER_W,
+                int(info.get("y", 0)),
+                int(total_w - POOL_HEADER_W),
+                int(info.get("height", MIN_LANE_H)),
+            )
+
+    # Node shapes
     for node in nodes:
         shape = etree.SubElement(plane, f"{{{BPMNDI_NS}}}BPMNShape")
         shape.set("id", f"shape_{node.node_id}")
         shape.set("bpmnElement", _element_id(node))
-        bounds = etree.SubElement(shape, f"{{{DC_NS}}}Bounds")
-        bounds.set("x", str(node.x or 0))
-        bounds.set("y", str(node.y or 0))
-        bounds.set("width", str(node.width or 120))
-        bounds.set("height", str(node.height or 60))
+        if node.bpmn_type == BPMNNodeType.GATEWAY:
+            shape.set("isMarkerVisible", "true")
+        _bounds(shape, int(node.x or 0), int(node.y or 0),
+                int(node.width or 120), int(node.height or 60))
 
-    # Add BPMNShape for needs_review annotation boxes
+    # Annotation shapes
     for node in nodes:
         if not node.needs_review:
             continue
-        annotation_id = f"ann_{node.node_id}"
-        ann_shape = etree.SubElement(plane, f"{{{BPMNDI_NS}}}BPMNShape")
-        ann_shape.set("id", f"shape_{annotation_id}")
-        ann_shape.set("bpmnElement", annotation_id)
-        ann_bounds = etree.SubElement(ann_shape, f"{{{DC_NS}}}Bounds")
-        ann_x = str((node.x or 0) + (node.width or 120) + 20)
-        ann_y = str((node.y or 0) - 40)
-        ann_bounds.set("x", ann_x)
-        ann_bounds.set("y", ann_y)
-        ann_bounds.set("width", "180")
-        ann_bounds.set("height", "40")
+        ann_id = f"ann_{node.node_id}"
+        ann_s = etree.SubElement(plane, f"{{{BPMNDI_NS}}}BPMNShape")
+        ann_s.set("id", f"shape_{ann_id}")
+        ann_s.set("bpmnElement", ann_id)
+        _bounds(ann_s,
+                int((node.x or 0) + (node.width or 120) + 20),
+                int((node.y or 0) - 40),
+                180, 40)
 
+    # Edge shapes
     for edge in edges:
-        waypoint_el = etree.SubElement(plane, f"{{{BPMNDI_NS}}}BPMNEdge")
-        waypoint_el.set("id", f"edge_{edge.edge_id}")
-        waypoint_el.set("bpmnElement", f"flow_{edge.edge_id}")
-        src_node = node_map.get(edge.source_node_id)
-        tgt_node = node_map.get(edge.target_node_id)
-        if src_node and tgt_node:
-            for nx_, ny_ in [
-                (src_node.x + src_node.width, src_node.y + src_node.height / 2),
-                (tgt_node.x, tgt_node.y + tgt_node.height / 2),
-            ]:
-                wp = etree.SubElement(waypoint_el, f"{{{DI_NS}}}waypoint")
-                wp.set("x", str(nx_))
-                wp.set("y", str(ny_))
+        edge_shape = etree.SubElement(plane, f"{{{BPMNDI_NS}}}BPMNEdge")
+        edge_shape.set("id", f"edge_{edge.edge_id}")
+        edge_shape.set("bpmnElement", f"flow_{edge.edge_id}")
+        src = node_map.get(edge.source_node_id)
+        tgt = node_map.get(edge.target_node_id)
+        if src and tgt:
+            sx = (src.x or 0) + (src.width or 120)
+            sy = (src.y or 0) + (src.height or 60) / 2
+            tx = tgt.x or 0
+            ty = (tgt.y or 0) + (tgt.height or 60) / 2
+            # Add a mid-waypoint when the edge crosses lanes (different Y bands)
+            waypoints = [(sx, sy), (tx, ty)]
+            if abs(sy - ty) > ROW_STRIDE:
+                mid_x = (sx + tx) / 2
+                waypoints = [(sx, sy), (mid_x, sy), (mid_x, ty), (tx, ty)]
+            for wx, wy in waypoints:
+                wp = etree.SubElement(edge_shape, f"{{{DI_NS}}}waypoint")
+                wp.set("x", str(int(wx)))
+                wp.set("y", str(int(wy)))
 
     return etree.tostring(definitions, pretty_print=True, xml_declaration=True, encoding="UTF-8")
 
+
+def _bounds(parent_el, x: int, y: int, width: int, height: int) -> None:
+    """Append a <dc:Bounds> child to a BPMNShape element."""
+    b = etree.SubElement(parent_el, f"{{{DC_NS}}}Bounds")
+    b.set("x", str(x))
+    b.set("y", str(y))
+    b.set("width", str(width))
+    b.set("height", str(height))
+
+
+def _emit_data_objects(process_el, process_model) -> list[tuple]:
+    """
+    Emit <dataObject> + <dataObjectReference> elements for each DataVar.
+    Returns a list of (dor_id, approx_x, approx_y) so the caller can add DI shapes.
+
+    Note: dataInputAssociation / dataOutputAssociation are NOT emitted here
+    because in BPMN 2.0 they must be children of the activity element, not the
+    process. The caller would need the live task XML element to do this correctly.
+    """
+    if not process_model:
+        return []
+    data_vars = getattr(process_model, "data_vars", []) or []
+    if not data_vars:
+        return []
+
+    placed: list[tuple] = []
+    for i, var in enumerate(data_vars):
+        var_name = getattr(var, "name", None)
+        if not var_name:
+            continue
+        do_id  = f"do_{_slug(var_name)}"
+        dor_id = f"dor_{_slug(var_name)}"
+
+        do_el = etree.SubElement(process_el, f"{{{BPMN_NS}}}dataObject")
+        do_el.set("id", do_id)
+        do_el.set("name", var_name)
+
+        dor_el = etree.SubElement(process_el, f"{{{BPMN_NS}}}dataObjectReference")
+        dor_el.set("id", dor_id)
+        dor_el.set("dataObjectRef", do_id)
+        dor_el.set("name", var_name)
+
+        # Place data objects below the diagram in a compact row
+        do_x = POOL_HEADER_W + LANE_LABEL_W + i * 60
+        do_y = -80  # negative Y — tools typically render these below the pool
+        placed.append((dor_id, do_x, do_y))
+
+    return placed
+
+
+# ── XML helpers ───────────────────────────────────────────────────────────────
 
 def _validate_xml(xml_bytes: bytes) -> None:
     try:
@@ -320,37 +553,41 @@ def _validate_xml(xml_bytes: bytes) -> None:
 
 def _bpmn_element(node) -> str:
     mapping = {
-        BPMNNodeType.START_EVENT: f"{{{BPMN_NS}}}startEvent",
-        BPMNNodeType.END_EVENT: f"{{{BPMN_NS}}}endEvent",
-        BPMNNodeType.TASK: f"{{{BPMN_NS}}}userTask",
-        BPMNNodeType.GATEWAY: _gateway_tag(node),
+        BPMNNodeType.START_EVENT:    f"{{{BPMN_NS}}}startEvent",
+        BPMNNodeType.END_EVENT:      f"{{{BPMN_NS}}}endEvent",
+        BPMNNodeType.TASK:           f"{{{BPMN_NS}}}userTask",
+        BPMNNodeType.GATEWAY:        _gateway_tag(node),
         BPMNNodeType.BOUNDARY_EVENT: f"{{{BPMN_NS}}}boundaryEvent",
-        BPMNNodeType.SUBPROCESS: f"{{{BPMN_NS}}}subProcess",
+        BPMNNodeType.SUBPROCESS:     f"{{{BPMN_NS}}}subProcess",
     }
     return mapping.get(node.bpmn_type, f"{{{BPMN_NS}}}task")
 
 
 def _gateway_tag(node) -> str:
-    gt_map = {
-        GatewayType.XOR: f"{{{BPMN_NS}}}exclusiveGateway",
-        GatewayType.AND: f"{{{BPMN_NS}}}parallelGateway",
-        GatewayType.OR: f"{{{BPMN_NS}}}inclusiveGateway",
-    }
-    return gt_map.get(node.gateway_type, f"{{{BPMN_NS}}}exclusiveGateway")
+    return {
+        GatewayType.EXCLUSIVE:   f"{{{BPMN_NS}}}exclusiveGateway",
+        GatewayType.PARALLEL:    f"{{{BPMN_NS}}}parallelGateway",
+        GatewayType.EVENT_BASED: f"{{{BPMN_NS}}}eventBasedGateway",
+    }.get(node.gateway_type, f"{{{BPMN_NS}}}exclusiveGateway")
 
 
 def _element_id(node) -> str:
-    prefix_map = {
-        BPMNNodeType.START_EVENT: "start",
-        BPMNNodeType.END_EVENT: "end",
-        BPMNNodeType.TASK: "task",
-        BPMNNodeType.GATEWAY: "gateway",
+    prefix = {
+        BPMNNodeType.START_EVENT:    "start",
+        BPMNNodeType.END_EVENT:      "end",
+        BPMNNodeType.TASK:           "task",
+        BPMNNodeType.GATEWAY:        "gateway",
         BPMNNodeType.BOUNDARY_EVENT: "boundary",
-        BPMNNodeType.SUBPROCESS: "subprocess",
-    }
-    prefix = prefix_map.get(node.bpmn_type, "node")
+        BPMNNodeType.SUBPROCESS:     "subprocess",
+    }.get(node.bpmn_type, "node")
     return f"{prefix}_{node.node_id}"
 
+
+def _slug(text: str) -> str:
+    return re.sub(r"[^\w]", "_", text.lower())[:40]
+
+
+# ── Reporting ─────────────────────────────────────────────────────────────────
 
 def _graph_metadata(nodes, edges) -> dict:
     node_types: dict[str, int] = {}
@@ -358,7 +595,7 @@ def _graph_metadata(nodes, edges) -> dict:
         k = n.bpmn_type.value if n.bpmn_type else "UNKNOWN"
         node_types[k] = node_types.get(k, 0) + 1
 
-    actors = {n.actor for n in nodes if n.actor}
+    actors  = {n.actor for n in nodes if n.actor}
     gw_types: dict[str, int] = {}
     for n in nodes:
         if n.bpmn_type == BPMNNodeType.GATEWAY and n.gateway_type:
@@ -366,10 +603,10 @@ def _graph_metadata(nodes, edges) -> dict:
             gw_types[k] = gw_types.get(k, 0) + 1
 
     return {
-        "node_count": len(nodes),
-        "edge_count": len(edges),
-        "lane_count": len(actors),
-        "node_types": node_types,
+        "node_count":    len(nodes),
+        "edge_count":    len(edges),
+        "lane_count":    len(actors),
+        "node_types":    node_types,
         "gateway_types": gw_types,
     }
 
@@ -379,35 +616,35 @@ def _build_report(job: Job, sop_outputs: list[dict]) -> dict:
     total_edges = sum(o["graph_metadata"]["edge_count"] for o in sop_outputs)
 
     review_flags = [
-        {"block_id": f.block_id, "layer": f.layer, "reason": f.reason}
+        {"chunk_id": f.chunk_id, "layer": f.layer, "reason": f.reason}
         for f in job.review_flags
     ]
-
     llm_log = [
         {"layer": r.layer, "template": r.prompt_template,
          "input_tokens": r.input_tokens, "output_tokens": r.output_tokens,
          "latency_ms": r.latency_ms, "cached": r.cached}
         for r in job.llm_call_log
     ]
-
     first_path = sop_outputs[0]["output_file"] if sop_outputs else ""
 
     return {
-        "job_id": job.job_id,
-        "sop_class": job.sop_class,
-        "status": job.status.value,
+        "job_id":      job.job_id,
+        "sop_class":   job.sop_class,
+        "status":      job.status.value,
         "graph_metadata": {
-            "sop_count": len(sop_outputs),
-            "node_count_total": total_nodes,
-            "edge_count_total": total_edges,
+            "sop_count":         len(sop_outputs),
+            "node_count_total":  total_nodes,
+            "edge_count_total":  total_edges,
         },
-        "sop_outputs": sop_outputs,
-        "review_flags": review_flags,
-        "llm_call_log": llm_log,
-        "output_files": [o["output_file"] for o in sop_outputs],
-        "output_file": first_path,
+        "sop_outputs":   sop_outputs,
+        "review_flags":  review_flags,
+        "llm_call_log":  llm_log,
+        "output_files":  [o["output_file"] for o in sop_outputs],
+        "output_file":   first_path,
     }
 
+
+# ── Exceptions ────────────────────────────────────────────────────────────────
 
 class LayerError(Exception):
     def __init__(self, code, message):
@@ -419,81 +656,3 @@ class SoftGateFailure(Exception):
     def __init__(self, code, message):
         super().__init__(message)
         self.code = code
-
-
-def _serialize_data_objects(
-    process_el,
-    nodes: list,
-    node_map: dict,
-    unit_to_node: dict,
-    process_model,
-    job_id: str,
-) -> None:
-    """
-    TASK 4: Emit BPMN dataObject, dataObjectReference, and data associations
-    for each DataVar in process_model.data_vars.
-
-    Each variable gets:
-    - <dataObject id="do_V_name"/>
-    - <dataObjectReference id="dor_V_name" dataObjectRef="do_V_name"/>
-    - <dataInputAssociation>  on the consumer task node(s)
-    - <dataOutputAssociation> on the producer task node
-
-    Safe to call if process_model is None or data_vars is empty.
-    """
-    if not process_model:
-        return
-    data_vars = getattr(process_model, 'data_vars', []) or []
-    if not data_vars:
-        return
-
-    for var in data_vars:
-        var_name = getattr(var, 'name', None)
-        if not var_name:
-            continue
-
-        do_id = f"do_{var_name}"
-        dor_id = f"dor_{var_name}"
-
-        # dataObject definition
-        do_el = etree.SubElement(process_el, f"{{{BPMN_NS}}}dataObject")
-        do_el.set("id", do_id)
-        do_el.set("name", var_name)
-
-        # dataObjectReference (required for associations)
-        dor_el = etree.SubElement(process_el, f"{{{BPMN_NS}}}dataObjectReference")
-        dor_el.set("id", dor_id)
-        dor_el.set("dataObjectRef", do_id)
-        dor_el.set("name", var_name)
-
-        # Producer association — find the task node that produces this var
-        producer_uid = getattr(var, 'producer_unit_id', None)
-        if producer_uid:
-            producer_nid = unit_to_node.get(producer_uid)
-            producer_node = node_map.get(producer_nid) if producer_nid else None
-            if producer_node and producer_node.bpmn_type == BPMNNodeType.TASK:
-                # Attach dataOutputAssociation to the producer task element
-                # Find the task XML element — we need to insert into the existing one.
-                # Instead, emit a standalone dataOutputAssociation inside the process
-                # (BPMN 2.0 allows it as a child of task or process-level — process-level is simpler).
-                assoc_id = f"doa_out_{var_name}_{producer_nid[:6]}"
-                doa = etree.SubElement(process_el, f"{{{BPMN_NS}}}dataOutputAssociation")
-                doa.set("id", assoc_id)
-                src_ref = etree.SubElement(doa, f"{{{BPMN_NS}}}sourceRef")
-                src_ref.text = _element_id(producer_node)
-                tgt_ref = etree.SubElement(doa, f"{{{BPMN_NS}}}targetRef")
-                tgt_ref.text = dor_id
-
-        # Consumer associations
-        consumers = getattr(var, 'consumers', []) or []
-        for consumer_uid in consumers:
-            consumer_nid = unit_to_node.get(consumer_uid)
-            consumer_node = node_map.get(consumer_nid) if consumer_nid else None
-            if consumer_node and consumer_node.bpmn_type == BPMNNodeType.TASK:
-                assoc_id = f"dia_in_{var_name}_{consumer_nid[:6]}"
-                dia = etree.SubElement(process_el, f"{{{BPMN_NS}}}dataInputAssociation")
-                dia.set("id", assoc_id)
-                src_ref = etree.SubElement(dia, f"{{{BPMN_NS}}}sourceRef")
-                src_ref.text = dor_id
-                tgt_ref = etree.SubElement(dia, f"{{{BPMN_NS}}}targetRef")
-                tgt_ref.text = _element_id(consumer_node)

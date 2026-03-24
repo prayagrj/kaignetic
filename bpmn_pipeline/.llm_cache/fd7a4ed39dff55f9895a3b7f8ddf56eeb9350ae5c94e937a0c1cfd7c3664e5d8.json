@@ -1,0 +1,1 @@
+{"result": [{"block_id": "ba401bcd", "block_type": "NOTE", "confidence": 0.96, "reasoning": "The text provides document metadata (section title, ID, version, dates, owner) which is informational and not an actionable step, decision, actor, condition, or exception."}], "input_tokens": 387, "output_tokens": 145}

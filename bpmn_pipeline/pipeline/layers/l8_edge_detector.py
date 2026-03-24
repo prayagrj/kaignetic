@@ -1,25 +1,98 @@
-"""L8 — Edge Detector: data-flow edges first, sequential fallback, targeted LLM for gateways."""
+"""L8 — Edge Detector: var-graph DAG first, sequential fallback, LLM as judge for gateways.
+"""
 import json
 import uuid
+from collections import defaultdict
+
+import networkx as nx
 
 import config
 from llm.client import LLMClient
-from llm.prompts import INFER_SINGLE_GATEWAY_SYSTEM, INFER_SINGLE_GATEWAY_USER
-from models.schemas import BPMNEdge, BPMNNode, BPMNNodeType, BlockType, GatewayType, Job
-from pipeline.utils.decision_patterns import DECISION_INLINE
+from llm.prompts import (
+    INFER_SINGLE_GATEWAY_SYSTEM, INFER_SINGLE_GATEWAY_USER,
+    RECONNECT_ISOLATED_NODES_SYSTEM, RECONNECT_ISOLATED_NODES_USER,
+)
+from models.schemas import BPMNEdge, BPMNNode, BPMNNodeType, BlockType, DataVar, GatewayType, Job
 
+
+# ── Sub-stage: variable linker ────────────────────────────────────────────────
+_BOOL_SUFFIXES = {"approved", "rejected", "valid", "invalid", "complete", "failed",
+                  "verified", "checked", "confirmed", "granted", "denied"}
+
+
+def _infer_var_type(name: str) -> str:
+    lower = name.lower().replace("v_", "")
+    for s in _BOOL_SUFFIXES:
+        if lower.endswith(s) or lower.startswith(s):
+            return "bool"
+    if any(k in lower for k in ("id", "number", "code", "ref")):
+        return "id"
+    if any(k in lower for k in ("count", "total", "amount", "qty")):
+        return "count"
+    if any(k in lower for k in ("data", "form", "record", "document", "report", "file")):
+        return "data"
+    return "unknown"
+
+
+def _build_data_vars(process) -> None:
+    """Populate process.data_vars from AtomicUnit inputs/outputs (pure Python, no LLM)."""
+    registry: dict[str, DataVar] = {}
+
+    for unit in process.atomic_units:
+        for var_name in unit.outputs:
+            if not var_name or not isinstance(var_name, str):
+                continue
+            if var_name not in registry:
+                registry[var_name] = DataVar(
+                    name=var_name,
+                    var_type=_infer_var_type(var_name),
+                    producer_unit_id=unit.unit_id,
+                )
+            elif registry[var_name].producer_unit_id is None:
+                registry[var_name].producer_unit_id = unit.unit_id
+
+        for var_name in unit.inputs:
+            if not var_name or not isinstance(var_name, str):
+                continue
+            if var_name not in registry:
+                registry[var_name] = DataVar(
+                    name=var_name,
+                    var_type=_infer_var_type(var_name),
+                    producer_unit_id=None,
+                )
+            registry[var_name].consumers.append(unit.unit_id)
+
+    # Flag inputs with no known producer for review
+    unit_map = {u.unit_id: u for u in process.atomic_units}
+    chunk_map = {c.chunk_id: c for c in process.chunks}
+    for var in registry.values():
+        if var.producer_unit_id is None:
+            for cuid in var.consumers:
+                consumer = unit_map.get(cuid)
+                if consumer:
+                    chunk = chunk_map.get(consumer.chunk_id)
+                    if chunk:
+                        chunk.needs_review = True
+                        chunk.review_reasons.append(
+                            f"Input variable '{var.name}' has no known producer in the flow."
+                        )
+
+    process.data_vars = list(registry.values())
 
 
 def run(job: Job) -> None:
     llm = LLMClient(job)
 
     for process in job.processes:
+        # ── Sub-stage 0: build variable graph ────────────────────────────────
+        _build_data_vars(process)
+
         nodes = process.bpmn_nodes
         node_map = {n.node_id: n for n in nodes}
         unit_to_node: dict[str, str] = process.__dict__.get("_unit_to_task_node", {})
-        block_map = {b.block_id: b for b in process.blocks}
+        chunk_map = {c.chunk_id: c for c in process.chunks}
 
-        # L7 guarantees exactly one START, one END, tasks in between (see l7_node_detector).
+        # L7 guarantees exactly one START, one END, tasks in between.
         start_nodes = [n for n in nodes if n.bpmn_type == BPMNNodeType.START_EVENT]
         end_nodes = [n for n in nodes if n.bpmn_type == BPMNNodeType.END_EVENT]
         task_node_ids = [
@@ -29,17 +102,11 @@ def run(job: Job) -> None:
         ]
         start_id = start_nodes[0].node_id if start_nodes else None
         end_id = end_nodes[0].node_id if end_nodes else None
-        ordered_node_ids = [nid for nid in ([start_id] + task_node_ids + [end_id]) if nid]
+        ordered_node_ids: list[str] = [nid for nid in ([start_id] + task_node_ids + [end_id]) if nid]
 
-        # ── Phase 1: Sequential base edges (document order) ──────────────────────
-        edges: list[BPMNEdge] = []
-        for i in range(len(ordered_node_ids) - 1):
-            src, tgt = ordered_node_ids[i], ordered_node_ids[i + 1]
-            if src and tgt:
-                edges.append(_make_edge(job.job_id, src, tgt))
-
-        # ── Phase 2: Data-flow edges from variable linker ─────────────────────────
-        data_flow_pairs: set[tuple[str, str]] = set()  # (src_node_id, tgt_node_id)
+        # ── Phase 1: Primary DAG from var-graph (producer → consumer) ─────────
+        var_edges: set[tuple[str, str]] = set()
+        var_outgoing: dict[str, set[str]] = defaultdict(set)
 
         for var in process.data_vars:
             if not var.producer_unit_id or not var.consumers:
@@ -50,27 +117,34 @@ def run(job: Job) -> None:
             for consumer_uid in var.consumers:
                 consumer_nid = unit_to_node.get(consumer_uid)
                 if consumer_nid and consumer_nid != producer_nid:
-                    data_flow_pairs.add((producer_nid, consumer_nid))
+                    var_edges.add((producer_nid, consumer_nid))
+                    var_outgoing[producer_nid].add(consumer_nid)
 
-        for src_nid, tgt_nid in data_flow_pairs:
-            # Only add if no sequential edge already exists for this pair going forward
-            already_sequential = any(
-                e.source_node_id == src_nid and e.target_node_id == tgt_nid
-                for e in edges
-            )
-            if not already_sequential:
-                e = _make_edge(job.job_id, src_nid, tgt_nid)
-                e.edge_type = "DATA_FLOW"
-                edges.append(e)
+        edges: list[BPMNEdge] = []
+        for src_nid, tgt_nid in var_edges:
+            e = _make_edge(job.job_id, src_nid, tgt_nid)
+            e.edge_type = "DATA_FLOW"
+            edges.append(e)
+
+        # ── Phase 2: Sequential fallback for var-graph-isolated nodes ─────────
+        # For each consecutive document-order pair, add a sequential edge only
+        # when the source node has NO outgoing var-graph edges (true unknown).
+        # This avoids the cross-branch "spine" that caused invalid diagrams.
+        for i in range(len(ordered_node_ids) - 1):
+            src, tgt = ordered_node_ids[i], ordered_node_ids[i + 1]
+            if not src or not tgt:
+                continue
+            if src not in var_outgoing:
+                # Node has no known data-flow successors → fall back to document order
+                if not any(e.source_node_id == src and e.target_node_id == tgt for e in edges):
+                    edges.append(_make_edge(job.job_id, src, tgt))
 
         # ── Phase 3: Gateway type + branch inference (LLM, one call per gateway) ──
-        gateway_candidates: list = []
-        for b in process.blocks:
-            if b.block_type == BlockType.DECISION:
-                gateway_candidates.append(b)
-            elif b.block_type == BlockType.STEP and DECISION_INLINE.search(b.raw_text):
-                b._is_implicit_decision = True
-                gateway_candidates.append(b)
+        # Discovery: any atomic unit marked DECISION by the atomizer becomes a gateway.
+        # This replaces the old chunk-type-based detection which required L3 to emit
+        # BlockType.DECISION — causing false positives. The atomizer (L6) now identifies
+        # decision points with finer granularity.
+        decision_units = [u for u in process.atomic_units if getattr(u, 'step_type', None) == 'DECISION']
 
         # Build a flat ordered list of atomic units for window lookups
         all_units = process.atomic_units
@@ -82,40 +156,36 @@ def run(job: Job) -> None:
             if var.producer_unit_id:
                 var_by_producer.setdefault(var.producer_unit_id, []).append(var)
 
-        for gw_block in gateway_candidates:
-            # Find the atomic units that belong to this gateway block
-            gw_units = [u for u in all_units if u.block_id == gw_block.block_id]
-            if not gw_units:
-                continue
-
-            gw_unit = gw_units[0]
+        for gw_unit in decision_units:
             gw_nid = unit_to_node.get(gw_unit.unit_id)
             if not gw_nid:
                 continue
 
+            gw_chunk = chunk_map.get(gw_unit.chunk_id)
             center_idx = unit_index.get(gw_unit.unit_id, 0)
             win = config.L8_GATEWAY_WINDOW
 
-            # Preceding units context
+            # Preceding units context (full action text, no truncation)
             preceding = []
             for u in all_units[max(0, center_idx - win):center_idx]:
-                nid = unit_to_node.get(u.unit_id)
                 preceding.append({
                     "unit_id": u.unit_id,
-                    "action": u.action[:80],
+                    "action": u.action,
+                    "step_type": getattr(u, 'step_type', 'SIMPLE'),
                     "actor": u.actor,
                     "outputs": u.outputs,
                 })
 
-            # Following units context
+            # Following units context (full action text + step_type so LLM can spot branches)
             following = []
             for u in all_units[center_idx + 1: center_idx + 1 + win]:
-                nid = unit_to_node.get(u.unit_id)
                 following.append({
                     "unit_id": u.unit_id,
-                    "action": u.action[:80],
+                    "action": u.action,
+                    "step_type": getattr(u, 'step_type', 'SIMPLE'),
                     "actor": u.actor,
                     "inputs": u.inputs,
+                    "condition": u.condition,
                 })
 
             # Variables known at this point (from producer units up to center)
@@ -125,18 +195,20 @@ def run(job: Job) -> None:
                     known_vars[var.name] = var.var_type
 
             gateway_block_dict = {
-                "block_id": gw_block.block_id,
-                "text": gw_block.raw_text,
-                "condition_scope": gw_block.condition_scope,
-                "primary_unit_id": gw_unit.unit_id,
+                "block_id": gw_unit.chunk_id,
+                "text": gw_chunk.contextualized if gw_chunk else gw_unit.action,
+                "condition_scope": gw_chunk.condition_scope if gw_chunk else None,
+                "decision_unit_id": gw_unit.unit_id,
+                "decision_action": gw_unit.action,
+                "decision_condition": gw_unit.condition,
                 "atomic_units": [
                     {
-                        "unit_id": u.unit_id,
-                        "action": u.action[:120],
-                        "outputs": u.outputs,
-                        "inputs": u.inputs,
+                        "unit_id": gw_unit.unit_id,
+                        "action": gw_unit.action,
+                        "step_type": gw_unit.step_type,
+                        "outputs": gw_unit.outputs,
+                        "inputs": gw_unit.inputs,
                     }
-                    for u in gw_units
                 ],
             }
 
@@ -156,13 +228,17 @@ def run(job: Job) -> None:
                 continue
 
             # Apply gateway type
-            gw_type_str = result.get("gateway_type", "XOR")
+            gw_type_str = result.get("gateway_type", "EXCLUSIVE")
             try:
                 gw_type = GatewayType(gw_type_str)
             except ValueError:
-                gw_type = GatewayType.XOR
+                gw_type = GatewayType.EXCLUSIVE
             node_map[gw_nid].bpmn_type = BPMNNodeType.GATEWAY
             node_map[gw_nid].gateway_type = gw_type
+            # Apply gateway label when provided
+            gw_label = result.get("gateway_label")
+            if gw_label:
+                node_map[gw_nid].label = gw_label
 
             # TASK 2: tag this gateway as DIVERGING
             node_map[gw_nid].gateway_direction = "DIVERGING"
@@ -173,7 +249,7 @@ def run(job: Job) -> None:
             branches = result.get("branches", [])
             if branches:
                 # Remove the single sequential out-edge from this gateway
-                edges[:] = [e for e in edges if e.source_node_id != gw_nid]
+                edges = [e for e in edges if e.source_node_id != gw_nid]
                 
                 has_edge_to_next = False
                 branch_target_nids: list[str] = []
@@ -188,7 +264,7 @@ def run(job: Job) -> None:
 
                     if target_nid:
                         e = _make_edge(job.job_id, gw_nid, target_nid)
-                        e.label = branch.get("condition_label")
+                        e.label = branch.get("label")
                         e.is_default = branch.get("is_default", False)
                         # TASK 3: annotate with condition variable from LLM
                         e.condition_variable = branch.get("condition_var")
@@ -200,12 +276,13 @@ def run(job: Job) -> None:
                 
                 # If the LLM didn't return any branch heading to the natural next step,
                 # we must add it implicitly, otherwise the entire downstream graph becomes orphaned.
-                if not has_edge_to_next and next_nid:
-                    e = _make_edge(job.job_id, gw_nid, next_nid)
+                if not has_edge_to_next and next_nid is not None:
+                    implicit_tgt: str = str(next_nid)
+                    e = _make_edge(job.job_id, gw_nid, implicit_tgt)
                     e.label = "otherwise (implicit)"
                     e.is_default = True
                     edges.append(e)
-                    branch_target_nids.append(next_nid)
+                    branch_target_nids.append(implicit_tgt)
 
                 # ── Remove stale cross-branch sequential edges ────────────────
                 # Phase 1 built a flat sequential spine in document order.
@@ -239,7 +316,7 @@ def run(job: Job) -> None:
                     stale_targets.add(valid_positions[idx][1])
 
                 if stale_targets:
-                    edges[:] = [
+                    edges = [
                         e for e in edges
                         if not (
                             e.target_node_id in stale_targets
@@ -254,16 +331,15 @@ def run(job: Job) -> None:
                     ]
 
         # ── Phase 4: Cross-reference overrides ────────────────────────────────────
-        for b in process.blocks:
-            for cr in b.cross_refs:
-                if cr.resolution_method in ("structural_anchor", "llm") and cr.resolved_block_id:
-                    src_unit = next((u for u in all_units if u.block_id == b.block_id), None)
-                    tgt_unit = next((u for u in all_units if u.block_id == cr.resolved_block_id), None)
+        for chunk in process.chunks:
+            for cr in chunk.cross_refs:
+                if cr.resolution_method in ("structural_anchor", "llm") and cr.resolved_chunk_id:
+                    src_unit = next((u for u in all_units if u.chunk_id == chunk.chunk_id), None)
+                    tgt_unit = next((u for u in all_units if u.chunk_id == cr.resolved_chunk_id), None)
                     if src_unit and tgt_unit:
                         src_nid = unit_to_node.get(src_unit.unit_id)
                         tgt_nid = unit_to_node.get(tgt_unit.unit_id)
                         if src_nid and tgt_nid and src_nid != tgt_nid:
-                            # Don't duplicate existing edges
                             if not any(e.source_node_id == src_nid and e.target_node_id == tgt_nid for e in edges):
                                 e = _make_edge(job.job_id, src_nid, tgt_nid)
                                 e.label = cr.ref_text
@@ -274,7 +350,7 @@ def run(job: Job) -> None:
         process.bpmn_nodes = nodes
 
         # ── Phase 5: Exception boundary edges → END ───────────────────────────────
-        exception_node_map = process.__dict__.get("_block_to_exception_node", {})
+        exception_node_map = process.__dict__.get("_chunk_to_exception_node", {})
         end_nid = end_id
         for bid, exc_nid in exception_node_map.items():
             if end_nid:
@@ -283,6 +359,10 @@ def run(job: Job) -> None:
         # ── Phase 6: Prune trivial gateways (1-in / 1-out) ───────────────────────
         nodes, edges = _prune_trivial_gateways(nodes, edges)
         process.bpmn_nodes = nodes
+
+        # ── Phase 7: Reconnect isolated subgraphs via LLM ────────────────────
+        # Must run AFTER all structural phases so the reachable set is stable.
+        edges = _reconnect_isolated_nodes(nodes, edges, ordered_node_ids, llm, job.job_id)
         process.bpmn_edges = edges
 
 
@@ -400,7 +480,7 @@ def _insert_converging_gateways(
             node_id=conv_id,
             job_id=job_id,
             bpmn_type=BPMNNodeType.GATEWAY,
-            gateway_type=GatewayType.XOR,
+            gateway_type=GatewayType.EXCLUSIVE,
             gateway_direction="CONVERGING",
             label="",
         )
@@ -415,6 +495,94 @@ def _insert_converging_gateways(
         new_edges.append(_make_edge(job_id, conv_id, tgt_nid))
 
     return new_nodes, new_edges
+
+def _reconnect_isolated_nodes(
+    nodes: list,
+    edges: list,
+    ordered_node_ids: list[str],
+    llm: "LLMClient",
+    job_id: str,
+) -> list:
+    """Use LLM to reconnect nodes that are not reachable from START."""
+    start_nodes = [n for n in nodes if n.bpmn_type == BPMNNodeType.START_EVENT]
+    if not start_nodes:
+        return edges
+
+    G = nx.DiGraph()
+    for n in nodes:
+        G.add_node(n.node_id)
+    for e in edges:
+        G.add_edge(e.source_node_id, e.target_node_id)
+
+    try:
+        reachable: set[str] = set(nx.bfs_tree(G, start_nodes[0].node_id).nodes())
+    except Exception:
+        return edges
+
+    exempt = {BPMNNodeType.BOUNDARY_EVENT}
+    node_map = {n.node_id: n for n in nodes}
+    pos_map = {nid: i for i, nid in enumerate(ordered_node_ids)}
+
+    isolated = [
+        n for n in nodes
+        if n.node_id not in reachable
+        and n.bpmn_type not in exempt
+        and n.bpmn_type not in {BPMNNodeType.START_EVENT, BPMNNodeType.END_EVENT}
+    ]
+    if not isolated:
+        return edges
+
+    def _node_info(n) -> dict:
+        return {
+            "node_id": n.node_id,
+            "label": n.label,
+            "actor": n.actor,
+            "bpmn_type": n.bpmn_type.value if n.bpmn_type else None,
+            "doc_position": pos_map.get(n.node_id),
+        }
+
+    isolated_data = [_node_info(n) for n in isolated]
+    reachable_data = [
+        _node_info(n) for n in nodes
+        if n.node_id in reachable and n.bpmn_type != BPMNNodeType.END_EVENT
+    ]
+
+    result = llm.call(
+        layer=8,
+        template_name="RECONNECT_ISOLATED_NODES",
+        system_prompt=RECONNECT_ISOLATED_NODES_SYSTEM,
+        user_prompt=RECONNECT_ISOLATED_NODES_USER.format(
+            isolated_nodes_json=json.dumps(isolated_data, indent=2),
+            reachable_nodes_json=json.dumps(reachable_data, indent=2),
+        ),
+    )
+
+    new_edges = list(edges)
+    if not result or not isinstance(result, list):
+        return new_edges
+
+    reachable_ids = set(reachable)
+    for item in result:
+        if not isinstance(item, dict):
+            continue
+        nid = item.get("node_id")
+        connect_from = item.get("connect_from")
+        connect_to = item.get("connect_to")
+        if float(item.get("confidence", 0)) < 0.3:
+            continue
+        if connect_from and connect_from not in reachable_ids:
+            continue
+        if connect_to and connect_to not in reachable_ids:
+            continue
+        if connect_from and nid:
+            if not any(e.source_node_id == connect_from and e.target_node_id == nid for e in new_edges):
+                new_edges.append(_make_edge(job_id, str(connect_from), str(nid)))
+        if connect_to and nid:
+            if not any(e.source_node_id == nid and e.target_node_id == connect_to for e in new_edges):
+                new_edges.append(_make_edge(job_id, str(nid), str(connect_to)))
+
+    return new_edges
+
 
 def _make_edge(job_id: str, src: str, tgt: str) -> BPMNEdge:
     return BPMNEdge(
