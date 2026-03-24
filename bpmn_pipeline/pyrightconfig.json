@@ -1,8 +1,0 @@
-{
-  "pythonVersion": "3.13",
-  "pythonPlatform": "Darwin",
-  "venvPath": ".",
-  "venv": "venv",
-  "include": ["."],
-  "exclude": ["venv"]
-}
