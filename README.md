@@ -16,10 +16,6 @@ The pipeline solves this end-to-end: feed in a document, get back a set of valid
 
 The pipeline runs as an ordered sequence of ten layers (`L1` → `L10`). Each layer has a single responsibility; it reads from a shared `Job` object and writes back into it. Every layer also runs a **gate check** after execution — if the output is structurally invalid the job halts immediately with a clear error code.
 
-```
-PDF/DOCX  →  L1  →  L2  →  L3  →  L3b  →  L4  →  L5  →  L6  →  L7  →  L8  →  L9  →  L10  →  .bpmn
-```
-
 ---
 
 ## Core Data Models
