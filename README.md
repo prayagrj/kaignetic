@@ -167,11 +167,12 @@ Builds the directed edges that connect BPMN nodes. Four passes run in order, eac
 2. **Data-flow edges** — uses the `DataVar` graph from L6b to add edges where a variable producer feeds a consumer that isn't its sequential neighbour.
 3. **Gateway branch inference (LLM)** — for each gateway node, the LLM receives the gateway block text, surrounding atomic units as context, and the known variables at that point. It returns the gateway type (`XOR`/`AND`/`OR`) and the branch conditions with their target units. The flat sequential spine is then surgically trimmed so cross-branch edges don't contaminate independent branches.
 4. **Cross-reference overrides** — resolved cross-refs from L5 (e.g. "refer to Step 3.2") create explicit jump edges.
-5. **Exception boundary edges** — each `BOUNDARY_EVENT` gets an edge to `END_EVENT`.
+5. **Converging gateways (Phase 5a)** — after diverging flows are mapped, the layer identifies join points where multiple edges target the same node. It automatically inserts XOR converging gateways to maintain BPMN structural validity.
+6. **Exception boundary edges** — each `BOUNDARY_EVENT` gets an edge to `END_EVENT`.
 
 | Gateway block | LLM output |
 |---|---|
-| `"Is the leave balance sufficient? If yes, proceed to approval. If no, notify employee of rejection."` | `{gateway_type: "XOR", branches: [{condition_label: "Yes", target_unit_id: "u_4a1"}, {condition_label: "No", target_unit_id: "u_5b2", is_default: true}]}` |
+| `"Is the leave balance sufficient? If yes, proceed to approval. If no, notify employee of rejection."` | `{gateway_type: "XOR", branches: [{condition_label: "Yes", target_unit_id: "u_4a1", condition_var: "V_bal_ok", condition_value: "true"}, {condition_label: "No", target_unit_id: "u_5b2", is_default: true, condition_var: "V_bal_ok", condition_value: "false"}]}` |
 
 > Gate: start event must have at least one outgoing edge; soft-fails if dead-end nodes ≥ 10%.
 
@@ -181,7 +182,7 @@ Builds the directed edges that connect BPMN nodes. Four passes run in order, eac
 
 Graph-level validation and cleanup using NetworkX:
 
-1. **Reachability** — BFS from `START_EVENT`; any node not reached is flagged `unreachable_from_start` and marked for review. `BOUNDARY_EVENT` nodes are exempt (they have no incoming sequence flows by BPMN spec).
+1. **Reachability** — BFS from `START_EVENT`; any node not reached is flagged `unreachable_from_start` and marked for review. `BOUNDARY_EVENT` nodes are exempt from this check as they are attached via exception semantics, not sequence flows.
 2. **Cycle detection** — back-edges are labelled `[loop-back]` and flagged for review; self-loops become `SUBPROCESS` nodes.
 3. **Gateway shape check** — a gateway with ≤ 1 outgoing edge is flagged (it should split the flow).
 4. **Lane assignment** — actors are mapped to swim-lane slugs for the L10 XML serialiser.
@@ -196,12 +197,14 @@ Graph-level validation and cleanup using NetworkX:
 Serialises each `ProcessModel` to a standards-compliant BPMN 2.0 XML file using `lxml`.
 
 - **Layout** — node positions are computed via longest-path depth ranking (topological sort, or BFS fallback for cyclic graphs). Nodes in the same depth column are sorted by actor so swim-lane rows are coherent.
-- **XML structure** — produces `bpmn:definitions` with `bpmn:process`, swim-lane `bpmn:laneSet`, all elements, `bpmn:sequenceFlow`s, and a `bpmndi:BPMNDiagram` with waypoints for all edges.
+- **XML structure** — produces `bpmn:definitions` with `bpmn:process`, swim-lane `bpmn:laneSet`, all elements, and `bpmn:sequenceFlow`s.
+- **Condition Expressions** — for edges originating from gateways, the translator emits `bpmn:conditionExpression` elements containing the logic (e.g., `${V_status} == 'approved'`) established in L8.
+- **Data Flow (DataObjects)** — serializes the process variable graph into BPMN `dataObject` and `dataObjectReference` elements, with `dataInputAssociation` and `dataOutputAssociation` linking them to the relevant tasks.
 - **Output files** — one `.bpmn` file per process, named `{job_id}_{process_id}_{process_name}.bpmn`, plus a `_report.json` summarising node/edge counts, LLM call statistics, and any review flags.
 
 | Output file | Contents |
 |---|---|
-| `f9d33b37_17f64a4f_employee_onboarding.bpmn` | Valid BPMN 2.0 XML, openable in Camunda, bpmn.io, or Signavio |
+| `f9d33b37_onboarding.bpmn` | Valid BPMN 2.0 XML with DataObjects, condition expressions, and layout waypoints. |
 | `f9d33b37_report.json` | `{sop_count: 2, node_count_total: 43, edge_count_total: 51, review_flags: [...], llm_call_log: [...]}` |
 
 > Gate: fails if any output file is missing or empty; fails if any node is missing layout coordinates.
@@ -213,10 +216,11 @@ Serialises each `ProcessModel` to a standards-compliant BPMN 2.0 XML file using 
 - **Multi-format input** — PDF, DOCX, and legacy `.doc` files (auto-converted via LibreOffice).
 - **Multi-process documents** — a single document produces multiple independent BPMN diagrams, one per logical SOP.
 - **Hybrid classification** — heuristic rules handle ~70% of blocks without an LLM call; the LLM is invoked only for genuinely ambiguous content.
-- **Data-flow awareness** — variable producer/consumer relationships extracted during atomization drive edge generation, capturing information dependencies beyond simple document order.
+- **Data-flow visualization** — variable producer/consumer relationships (DataVars) are visualized as BPMN DataObjects with explicit associations to the tasks that use or create them.
+- **Automatic join resolution** — inserts XOR converging gateways at flow merge points to ensure diagrams follow standard BPMN structural rules.
 - **Actor swim lanes** — resolved actors are mapped to BPMN swim lanes in the output XML.
 - **LLM result caching** — repeated identical prompts (same template + input) are served from a local cache, making re-runs fast and cost-free.
 - **Graceful degradation** — every LLM call has a structural fallback so the pipeline produces output even when an LLM step fails.
 - **Review flags** — nodes and blocks that couldn't be confidently resolved are marked `needs_review` with a reason, surfaced in the report JSON.
 - **Gate-guarded layers** — each layer validates its own output before passing control to the next; ambiguous soft failures are captured as warnings rather than hard stops where possible.
-- **Standards-compliant output** — BPMN 2.0 XML with namespace-correct `bpmndi` diagram interchange; openable in any compliant tool.
+- **Standards-compliant output** — BPMN 2.0 XML with namespace-correct `bpmndi` diagram interchange and `conditionExpression` logic.
