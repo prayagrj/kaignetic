@@ -20,7 +20,7 @@ The pipeline runs as an ordered sequence of ten layers (`L1` → `L10`). Each la
 
 ## Core Data Models
 
-Understanding the data models is essential to following the pipeline. The central unit of work changed from a flat `Block` to a richer `StructuredChunk` in the current architecture.
+Understanding the data models is essential to following the pipeline. The central unit of work is a richer `StructuredChunk` in the current architecture.
 
 ### StructuredChunk
 
@@ -134,8 +134,6 @@ The `chunk_builder` walks `doc.iterate_items()` maintaining a `section_stack`. W
 
 The document domain (HR, IT, Finance, etc.) is detected from keyword frequency and stored as `job.sop_class`.
 
-**Old vs. new:** Previously, this layer produced a flat list of typed `Block` objects — one per line/paragraph — with a parent-child ID graph. Chunks are coarser: one per section, carrying full heading context. This makes every downstream LLM prompt self-contained.
-
 | Input | Output |
 |---|---|
 | `DoclingDocument` | `job.chunks = [StructuredChunk(chunk_id="a1f3", headings=["5. Pre-Joining", "5.1 Offer Docs"], elements=[...]), ...]` |
@@ -223,7 +221,7 @@ Walks every STEP, DECISION, and EXCEPTION chunk in document order and attaches t
 
 ### L6 — Chunk Atomizer
 
-Decomposes each executable `StructuredChunk` into one or more `AtomicUnit` objects. This layer does the heavy lifting that the old block atomizer did, but now also extracts **process variables** (inputs/outputs) for each unit.
+Decomposes each executable `StructuredChunk` into one or more `AtomicUnit` objects. This layer does the heavy lifting extracts **process variables** (inputs/outputs) for each unit.
 
 **Process:**
 
@@ -477,13 +475,10 @@ Every element gets a `BPMNShape` with computed bounds. Every edge gets a `BPMNEd
 - **Multi-process documents** — a single document produces multiple independent BPMN diagrams, one per logical SOP discovered by L3b.
 - **Chunk-based processing** — document sections are processed as self-contained `StructuredChunk` objects carrying full heading context, eliminating the need for fine-grained block trees and making every LLM call self-sufficient.
 - **Variable-flow DAG** — L6 extracts named process variables (`inputs`/`outputs`) from each atomic action; L8 uses these to build data-dependency edges rather than relying on document order alone.
-- **Per-gateway LLM inference** — one targeted LLM call per decision point determines the gateway type (EXCLUSIVE / PARALLEL / EVENT_BASED) and branch conditions, keeping prompts small and precise.
 - **Automatic join resolution** — L8 inserts XOR converging gateways at flow merge points to maintain BPMN structural validity without manual annotation.
 - **Isolated node repair** — L8 detects nodes unreachable from the start and uses the LLM to reconnect them based on surrounding context.
 - **Actor swim lanes** — resolved actors are mapped to BPMN 2.0 `<lane>` elements inside a full `<collaboration>` structure.
 - **Condition expressions** — gateway branch conditions are serialised as `<conditionExpression>` elements (e.g. `${V_approved} == true`) in the output XML.
-- **Data objects** — process variables (DataVars) are serialised as BPMN `<dataObject>` elements and rendered in the diagram.
-- **LLM result caching** — identical prompts (same template + input hash) are served from a local disk cache, making re-runs fast and cost-free.
 - **Graceful degradation** — every LLM call has a structural fallback so the pipeline produces output even when an LLM step fails.
 - **Review flags** — nodes and chunks that couldn't be confidently resolved are marked `needs_review` with a reason, surfaced in the report JSON.
 - **Gate-guarded layers** — each layer validates its own output before passing control to the next; soft failures are captured as warnings rather than hard stops where possible.
