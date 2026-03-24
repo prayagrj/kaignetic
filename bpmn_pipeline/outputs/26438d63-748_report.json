@@ -1,0 +1,614 @@
+{
+  "job_id": "26438d63-748",
+  "sop_class": "HR_PROCESS",
+  "status": "NEEDS_REVIEW",
+  "graph_metadata": {
+    "sop_count": 5,
+    "node_count_total": 104,
+    "edge_count_total": 119
+  },
+  "sop_outputs": [
+    {
+      "process_id": "52cc6c89",
+      "name": "Pre\u2011Joining Offer & Verification",
+      "output_file": "/Users/prayagraj/Documents/kaignetic/bpmn_pipeline/outputs/26438d63-748_52cc6c89_prejoining_offer_verification.bpmn",
+      "graph_metadata": {
+        "node_count": 30,
+        "edge_count": 36,
+        "lane_count": 3,
+        "node_types": {
+          "START_EVENT": 1,
+          "TASK": 19,
+          "GATEWAY": 9,
+          "END_EVENT": 1
+        },
+        "gateway_types": {
+          "EXCLUSIVE": 9
+        }
+      }
+    },
+    {
+      "process_id": "e1a7c7ca",
+      "name": "First\u2011Day Onboarding",
+      "output_file": "/Users/prayagraj/Documents/kaignetic/bpmn_pipeline/outputs/26438d63-748_e1a7c7ca_firstday_onboarding.bpmn",
+      "graph_metadata": {
+        "node_count": 25,
+        "edge_count": 29,
+        "lane_count": 4,
+        "node_types": {
+          "START_EVENT": 1,
+          "TASK": 20,
+          "GATEWAY": 3,
+          "END_EVENT": 1
+        },
+        "gateway_types": {
+          "EXCLUSIVE": 3
+        }
+      }
+    },
+    {
+      "process_id": "1908b9db",
+      "name": "Post\u2011Onboarding Compliance",
+      "output_file": "/Users/prayagraj/Documents/kaignetic/bpmn_pipeline/outputs/26438d63-748_1908b9db_postonboarding_compliance.bpmn",
+      "graph_metadata": {
+        "node_count": 19,
+        "edge_count": 22,
+        "lane_count": 3,
+        "node_types": {
+          "START_EVENT": 1,
+          "TASK": 14,
+          "GATEWAY": 3,
+          "END_EVENT": 1
+        },
+        "gateway_types": {
+          "EXCLUSIVE": 3
+        }
+      }
+    },
+    {
+      "process_id": "7a917543",
+      "name": "Special Onboarding Scenarios",
+      "output_file": "/Users/prayagraj/Documents/kaignetic/bpmn_pipeline/outputs/26438d63-748_7a917543_special_onboarding_scenarios.bpmn",
+      "graph_metadata": {
+        "node_count": 27,
+        "edge_count": 30,
+        "lane_count": 3,
+        "node_types": {
+          "START_EVENT": 1,
+          "TASK": 20,
+          "GATEWAY": 5,
+          "END_EVENT": 1
+        },
+        "gateway_types": {
+          "EXCLUSIVE": 5
+        }
+      }
+    },
+    {
+      "process_id": "70ed9210",
+      "name": "Exceptions & Escalation",
+      "output_file": "/Users/prayagraj/Documents/kaignetic/bpmn_pipeline/outputs/26438d63-748_70ed9210_exceptions_escalation.bpmn",
+      "graph_metadata": {
+        "node_count": 3,
+        "edge_count": 2,
+        "lane_count": 1,
+        "node_types": {
+          "START_EVENT": 1,
+          "TASK": 1,
+          "END_EVENT": 1
+        },
+        "gateway_types": {}
+      }
+    }
+  ],
+  "review_flags": [
+    {
+      "chunk_id": null,
+      "layer": 5,
+      "reason": "1 cross-references unresolved."
+    },
+    {
+      "chunk_id": null,
+      "layer": 8,
+      "reason": "Dead-end nodes >= 10% in Pre\u2011Joining Offer & Verification"
+    }
+  ],
+  "llm_call_log": [
+    {
+      "layer": 3,
+      "template": "CLASSIFY_ELEMENTS",
+      "input_tokens": 598,
+      "output_tokens": 563,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 3,
+      "template": "CLASSIFY_ELEMENTS",
+      "input_tokens": 476,
+      "output_tokens": 99,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 3,
+      "template": "CLASSIFY_ELEMENTS",
+      "input_tokens": 469,
+      "output_tokens": 187,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 3,
+      "template": "CLASSIFY_ELEMENTS",
+      "input_tokens": 575,
+      "output_tokens": 116,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 3,
+      "template": "CLASSIFY_ELEMENTS",
+      "input_tokens": 427,
+      "output_tokens": 137,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 3,
+      "template": "CLASSIFY_ELEMENTS",
+      "input_tokens": 731,
+      "output_tokens": 655,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 3,
+      "template": "CLASSIFY_ELEMENTS",
+      "input_tokens": 442,
+      "output_tokens": 167,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 3,
+      "template": "CLASSIFY_ELEMENTS",
+      "input_tokens": 797,
+      "output_tokens": 333,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 3,
+      "template": "CLASSIFY_ELEMENTS",
+      "input_tokens": 615,
+      "output_tokens": 390,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 3,
+      "template": "CLASSIFY_ELEMENTS",
+      "input_tokens": 709,
+      "output_tokens": 298,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 3,
+      "template": "CLASSIFY_ELEMENTS",
+      "input_tokens": 438,
+      "output_tokens": 180,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 3,
+      "template": "CLASSIFY_ELEMENTS",
+      "input_tokens": 687,
+      "output_tokens": 271,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 3,
+      "template": "CLASSIFY_ELEMENTS",
+      "input_tokens": 578,
+      "output_tokens": 184,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 3,
+      "template": "CLASSIFY_ELEMENTS",
+      "input_tokens": 585,
+      "output_tokens": 196,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 3,
+      "template": "CLASSIFY_ELEMENTS",
+      "input_tokens": 444,
+      "output_tokens": 124,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 3,
+      "template": "CLASSIFY_ELEMENTS",
+      "input_tokens": 647,
+      "output_tokens": 517,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 3,
+      "template": "CLASSIFY_ELEMENTS",
+      "input_tokens": 577,
+      "output_tokens": 390,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 3,
+      "template": "CLASSIFY_ELEMENTS",
+      "input_tokens": 764,
+      "output_tokens": 367,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 3,
+      "template": "CLASSIFY_ELEMENTS",
+      "input_tokens": 638,
+      "output_tokens": 476,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 3,
+      "template": "CLASSIFY_ELEMENTS",
+      "input_tokens": 694,
+      "output_tokens": 571,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 3,
+      "template": "CLASSIFY_ELEMENTS",
+      "input_tokens": 638,
+      "output_tokens": 456,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 3,
+      "template": "CLASSIFY_ELEMENTS",
+      "input_tokens": 663,
+      "output_tokens": 334,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 3,
+      "template": "CLASSIFY_ELEMENTS",
+      "input_tokens": 491,
+      "output_tokens": 221,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": "3b",
+      "template": "SPLIT_PROCESSES",
+      "input_tokens": 774,
+      "output_tokens": 648,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 4,
+      "template": "DEDUPLICATE_ACTORS",
+      "input_tokens": 353,
+      "output_tokens": 626,
+      "latency_ms": 0,
+      "cached": true
+    },
+    {
+      "layer": 5,
+      "template": "ENRICH_CHUNK",
+      "input_tokens": 391,
+      "output_tokens": 164,
+      "latency_ms": 551.2,
+      "cached": false
+    },
+    {
+      "layer": 5,
+      "template": "ENRICH_CHUNK",
+      "input_tokens": 388,
+      "output_tokens": 469,
+      "latency_ms": 1270.1,
+      "cached": false
+    },
+    {
+      "layer": 5,
+      "template": "ENRICH_CHUNK",
+      "input_tokens": 394,
+      "output_tokens": 158,
+      "latency_ms": 460.7,
+      "cached": false
+    },
+    {
+      "layer": 5,
+      "template": "ENRICH_CHUNK",
+      "input_tokens": 387,
+      "output_tokens": 164,
+      "latency_ms": 706.1,
+      "cached": false
+    },
+    {
+      "layer": 5,
+      "template": "ENRICH_CHUNK",
+      "input_tokens": 386,
+      "output_tokens": 419,
+      "latency_ms": 990.5,
+      "cached": false
+    },
+    {
+      "layer": 5,
+      "template": "ENRICH_CHUNK",
+      "input_tokens": 383,
+      "output_tokens": 345,
+      "latency_ms": 2273.0,
+      "cached": false
+    },
+    {
+      "layer": 5,
+      "template": "ENRICH_CHUNK",
+      "input_tokens": 389,
+      "output_tokens": 241,
+      "latency_ms": 692.1,
+      "cached": false
+    },
+    {
+      "layer": 5,
+      "template": "ENRICH_CHUNK",
+      "input_tokens": 393,
+      "output_tokens": 280,
+      "latency_ms": 711.0,
+      "cached": false
+    },
+    {
+      "layer": 5,
+      "template": "ENRICH_CHUNK",
+      "input_tokens": 395,
+      "output_tokens": 205,
+      "latency_ms": 562.5,
+      "cached": false
+    },
+    {
+      "layer": 5,
+      "template": "ENRICH_CHUNK",
+      "input_tokens": 910,
+      "output_tokens": 698,
+      "latency_ms": 1620.4,
+      "cached": false
+    },
+    {
+      "layer": 5,
+      "template": "ENRICH_CHUNK",
+      "input_tokens": 908,
+      "output_tokens": 459,
+      "latency_ms": 1193.0,
+      "cached": false
+    },
+    {
+      "layer": 5,
+      "template": "ENRICH_CHUNK",
+      "input_tokens": 386,
+      "output_tokens": 318,
+      "latency_ms": 817.6,
+      "cached": false
+    },
+    {
+      "layer": 5,
+      "template": "ENRICH_CHUNK",
+      "input_tokens": 362,
+      "output_tokens": 185,
+      "latency_ms": 600.1,
+      "cached": false
+    },
+    {
+      "layer": 6,
+      "template": "ATOMIZE_WITH_CONTEXT",
+      "input_tokens": 1163,
+      "output_tokens": 2260,
+      "latency_ms": 6872.2,
+      "cached": false
+    },
+    {
+      "layer": 6,
+      "template": "ATOMIZE_WITH_CONTEXT",
+      "input_tokens": 1080,
+      "output_tokens": 1497,
+      "latency_ms": 4129.8,
+      "cached": false
+    },
+    {
+      "layer": 6,
+      "template": "ATOMIZE_WITH_CONTEXT",
+      "input_tokens": 1156,
+      "output_tokens": 2695,
+      "latency_ms": 5926.5,
+      "cached": false
+    },
+    {
+      "layer": 6,
+      "template": "ATOMIZE_WITH_CONTEXT",
+      "input_tokens": 891,
+      "output_tokens": 2852,
+      "latency_ms": 12919.5,
+      "cached": false
+    },
+    {
+      "layer": 6,
+      "template": "ATOMIZE_WITH_CONTEXT",
+      "input_tokens": 820,
+      "output_tokens": 917,
+      "latency_ms": 3060.9,
+      "cached": false
+    },
+    {
+      "layer": 6,
+      "template": "ATOMIZE_WITH_CONTEXT",
+      "input_tokens": 827,
+      "output_tokens": 1876,
+      "latency_ms": 4499.0,
+      "cached": false
+    },
+    {
+      "layer": 6,
+      "template": "ATOMIZE_WITH_CONTEXT",
+      "input_tokens": 867,
+      "output_tokens": 1594,
+      "latency_ms": 8593.9,
+      "cached": false
+    },
+    {
+      "layer": 6,
+      "template": "ATOMIZE_WITH_CONTEXT",
+      "input_tokens": 820,
+      "output_tokens": 1204,
+      "latency_ms": 4910.7,
+      "cached": false
+    },
+    {
+      "layer": 6,
+      "template": "ATOMIZE_WITH_CONTEXT",
+      "input_tokens": 928,
+      "output_tokens": 1852,
+      "latency_ms": 5426.7,
+      "cached": false
+    },
+    {
+      "layer": 6,
+      "template": "ATOMIZE_WITH_CONTEXT",
+      "input_tokens": 861,
+      "output_tokens": 2049,
+      "latency_ms": 7057.7,
+      "cached": false
+    },
+    {
+      "layer": 6,
+      "template": "ATOMIZE_WITH_CONTEXT",
+      "input_tokens": 894,
+      "output_tokens": 2647,
+      "latency_ms": 9032.6,
+      "cached": false
+    },
+    {
+      "layer": 6,
+      "template": "ATOMIZE_WITH_CONTEXT",
+      "input_tokens": 866,
+      "output_tokens": 2521,
+      "latency_ms": 8259.9,
+      "cached": false
+    },
+    {
+      "layer": 8,
+      "template": "INFER_SINGLE_GATEWAY",
+      "input_tokens": 1756,
+      "output_tokens": 781,
+      "latency_ms": 3232.6,
+      "cached": false
+    },
+    {
+      "layer": 8,
+      "template": "INFER_SINGLE_GATEWAY",
+      "input_tokens": 1854,
+      "output_tokens": 395,
+      "latency_ms": 2415.4,
+      "cached": false
+    },
+    {
+      "layer": 8,
+      "template": "INFER_SINGLE_GATEWAY",
+      "input_tokens": 1800,
+      "output_tokens": 1803,
+      "latency_ms": 4224.8,
+      "cached": false
+    },
+    {
+      "layer": 8,
+      "template": "INFER_SINGLE_GATEWAY",
+      "input_tokens": 1525,
+      "output_tokens": 458,
+      "latency_ms": 4133.0,
+      "cached": false
+    },
+    {
+      "layer": 8,
+      "template": "INFER_SINGLE_GATEWAY",
+      "input_tokens": 1628,
+      "output_tokens": 680,
+      "latency_ms": 16991.4,
+      "cached": false
+    },
+    {
+      "layer": 8,
+      "template": "RECONNECT_ISOLATED_NODES",
+      "input_tokens": 1834,
+      "output_tokens": 252,
+      "latency_ms": 737.0,
+      "cached": false
+    },
+    {
+      "layer": 8,
+      "template": "INFER_SINGLE_GATEWAY",
+      "input_tokens": 1627,
+      "output_tokens": 591,
+      "latency_ms": 2531.8,
+      "cached": false
+    },
+    {
+      "layer": 8,
+      "template": "RECONNECT_ISOLATED_NODES",
+      "input_tokens": 1510,
+      "output_tokens": 238,
+      "latency_ms": 710.5,
+      "cached": false
+    },
+    {
+      "layer": 8,
+      "template": "INFER_SINGLE_GATEWAY",
+      "input_tokens": 1692,
+      "output_tokens": 1686,
+      "latency_ms": 4042.8,
+      "cached": false
+    },
+    {
+      "layer": 8,
+      "template": "INFER_SINGLE_GATEWAY",
+      "input_tokens": 1645,
+      "output_tokens": 546,
+      "latency_ms": 4940.7,
+      "cached": false
+    },
+    {
+      "layer": 8,
+      "template": "RECONNECT_ISOLATED_NODES",
+      "input_tokens": 1886,
+      "output_tokens": 212,
+      "latency_ms": 4115.6,
+      "cached": false
+    }
+  ],
+  "output_files": [
+    "/Users/prayagraj/Documents/kaignetic/bpmn_pipeline/outputs/26438d63-748_52cc6c89_prejoining_offer_verification.bpmn",
+    "/Users/prayagraj/Documents/kaignetic/bpmn_pipeline/outputs/26438d63-748_e1a7c7ca_firstday_onboarding.bpmn",
+    "/Users/prayagraj/Documents/kaignetic/bpmn_pipeline/outputs/26438d63-748_1908b9db_postonboarding_compliance.bpmn",
+    "/Users/prayagraj/Documents/kaignetic/bpmn_pipeline/outputs/26438d63-748_7a917543_special_onboarding_scenarios.bpmn",
+    "/Users/prayagraj/Documents/kaignetic/bpmn_pipeline/outputs/26438d63-748_70ed9210_exceptions_escalation.bpmn"
+  ],
+  "output_file": "/Users/prayagraj/Documents/kaignetic/bpmn_pipeline/outputs/26438d63-748_52cc6c89_prejoining_offer_verification.bpmn"
+}

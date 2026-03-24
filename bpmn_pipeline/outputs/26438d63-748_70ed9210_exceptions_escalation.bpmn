@@ -1,0 +1,45 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="definitions_26438d63-748_70ed9210" targetNamespace="http://bpmn.io/schema/bpmn">
+  <collaboration id="collab_26438d63-748_70ed9210">
+    <participant id="participant_26438d63-748_70ed9210" name="Exceptions &amp; Escalation" processRef="process_26438d63-748_70ed9210"/>
+  </collaboration>
+  <process id="process_26438d63-748_70ed9210" name="Exceptions &amp; Escalation" isExecutable="false">
+    <laneSet id="laneSet_1">
+      <lane id="lane_unknown" name="Unknown">
+        <flowNodeRef>task_a2ee62a6</flowNodeRef>
+      </lane>
+    </laneSet>
+    <startEvent id="start_23e55fe2" name="Start"/>
+    <userTask id="task_a2ee62a6" name="Section: 9. SOP Exceptions and Escalation Matrix&#10;&#10;| Situation                                       "/>
+    <endEvent id="end_8a9268f5" name="End"/>
+    <sequenceFlow id="flow_3f920273" sourceRef="start_23e55fe2" targetRef="task_a2ee62a6"/>
+    <sequenceFlow id="flow_0f327534" sourceRef="task_a2ee62a6" targetRef="end_8a9268f5"/>
+  </process>
+  <bpmndi:BPMNDiagram id="diagram_70ed9210">
+    <bpmndi:BPMNPlane id="plane_70ed9210" bpmnElement="collab_26438d63-748_70ed9210">
+      <bpmndi:BPMNShape id="shape_participant_26438d63-748_70ed9210" bpmnElement="participant_26438d63-748_70ed9210" isHorizontal="true">
+        <dc:Bounds x="0" y="0" width="750" height="140"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_lane_unknown" bpmnElement="lane_unknown" isHorizontal="true">
+        <dc:Bounds x="30" y="0" width="720" height="140"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_23e55fe2" bpmnElement="start_23e55fe2">
+        <dc:Bounds x="212" y="37" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_a2ee62a6" bpmnElement="task_a2ee62a6">
+        <dc:Bounds x="350" y="25" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_8a9268f5" bpmnElement="end_8a9268f5">
+        <dc:Bounds x="572" y="37" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="edge_3f920273" bpmnElement="flow_3f920273">
+        <di:waypoint x="248" y="55"/>
+        <di:waypoint x="350" y="55"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_0f327534" bpmnElement="flow_0f327534">
+        <di:waypoint x="470" y="55"/>
+        <di:waypoint x="572" y="55"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

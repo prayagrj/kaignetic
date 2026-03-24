@@ -5,4 +5,3 @@ __pycache__/
 .vscode/
 .env
 bpmn_pipeline/bpmn_pipeline/outputs
-outputs
