@@ -7,6 +7,5 @@ lxml
 networkx
 python-dotenv
 pytest
-langfuse
-langfuse
-spacy>=3.7
+langfuse<3.0.0
+json-repair

@@ -20,7 +20,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from models.schemas import BlockType, ChunkElement, ElementType, StructuredChunk
+from models.schemas import ChunkElement, ElementType, StructuredChunk
 
 if TYPE_CHECKING:
     from docling_core.types.doc import DoclingDocument

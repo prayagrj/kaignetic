@@ -1,0 +1,16 @@
+{
+  "job_id": "cfb45351-9e3",
+  "source_file_path": "/Users/prayagraj/Documents/kaignetic/CCA.pdf",
+  "status": "RUNNING",
+  "current_layer": 1,
+  "error": null,
+  "created_at": "2026-04-22T07:50:10.586040",
+  "updated_at": "2026-04-22T07:50:10.586044",
+  "layer_timestamps": {},
+  "review_flags": [],
+  "llm_call_log": [],
+  "chunks": [],
+  "context_index": null,
+  "processes": [],
+  "extraction": {}
+}

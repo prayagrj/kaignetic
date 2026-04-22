@@ -15,6 +15,7 @@ import os
 import time
 from typing import Any
 
+from json_repair import repair_json
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
 from langfuse import Langfuse
@@ -61,16 +62,23 @@ class LLMClient:
         )
         # Initialise Langfuse — reads LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY,
         # and LANGFUSE_HOST from the environment (loaded by config via dotenv).
-        self.langfuse = Langfuse(
-            public_key=config.LANGFUSE_PUBLIC_KEY,
-            secret_key=config.LANGFUSE_SECRET_KEY,
-            host=config.LANGFUSE_HOST,
-        )
-        # One trace per job so all generations are grouped together.
-        self._trace = self.langfuse.trace(
-            name=f"bpmn-pipeline-{getattr(job, 'job_id', 'unknown')}",
-            metadata={"job_id": str(getattr(job, 'job_id', 'unknown'))},
-        )
+        # Make tracing optional: if keys are missing or initialization fails, continue without it.
+        self.langfuse = None
+        self._trace = None
+        try:
+            if config.LANGFUSE_PUBLIC_KEY and config.LANGFUSE_SECRET_KEY:
+                self.langfuse = Langfuse(
+                    public_key=config.LANGFUSE_PUBLIC_KEY,
+                    secret_key=config.LANGFUSE_SECRET_KEY,
+                    host=config.LANGFUSE_HOST,
+                )
+                # One trace per job so all generations are grouped together.
+                self._trace = self.langfuse.trace(
+                    name=f"bpmn-pipeline-{getattr(job, 'job_id', 'unknown')}",
+                    metadata={"job_id": str(getattr(job, 'job_id', 'unknown'))},
+                )
+        except Exception as e:
+            print(f"[LLM] Warning: Langfuse initialization failed: {e}. Tracing disabled.")
 
     def call(self, layer: int, template_name: str, system_prompt: str, user_prompt: str) -> Any:
         # Warn when estimated tokens exceed budget
@@ -90,17 +98,18 @@ class LLMClient:
             out_tok = cached.get("output_tokens", 0)
             self._log(layer, template_name, in_tok, out_tok, 0, cached=True)
             # Record cache hit in Langfuse as a zero-latency generation
-            self._trace.generation(
-                name=f"L{layer}/{template_name}",
-                model=config.GROQ_MODEL,
-                input=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                output=cached["result"],
-                usage={"input": in_tok, "output": out_tok, "unit": "TOKENS"},
-                metadata={"layer": layer, "cache_hit": True},
-            )
+            if self._trace:
+                self._trace.generation(
+                    name=f"L{layer}/{template_name}",
+                    model=config.GROQ_MODEL,
+                    input=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    output=cached["result"],
+                    usage={"input": in_tok, "output": out_tok, "unit": "TOKENS"},
+                    metadata={"layer": layer, "cache_hit": True},
+                )
             return cached["result"]
 
         messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
@@ -109,38 +118,54 @@ class LLMClient:
 
         # Two attempts with exponential back-off (handles Groq rate-limit 429s)
         for attempt in range(2):
-            generation = self._trace.generation(
-                name=f"L{layer}/{template_name}",
-                model=config.GROQ_MODEL,
-                input=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                metadata={"layer": layer, "attempt": attempt + 1, "cache_hit": False},
-            )
             try:
                 t0 = time.time()
                 response = self.model.invoke(messages)
                 latency = (time.time() - t0) * 1000
                 content = response.content.strip()
 
-                # Strip markdown fences if present
-                if content.startswith("```"):
-                    content = content.split("```")[1]
+                # Strip markdown fences if present — handle both ``` and `` wrapping
+                if "```" in content:
+                    # Extract content between opening and closing backticks
+                    parts = content.split("```")
+                    if len(parts) >= 3:
+                        content = parts[1]  # Take the middle part
+                    elif len(parts) == 2:
+                        content = parts[1]  # Take after first ```
+                    # Strip 'json' language tag if present
+                    content = content.lstrip()
                     if content.startswith("json"):
-                        content = content[4:]
+                        content = content[4:].lstrip()
 
-                parsed = json.loads(content)
+                try:
+                    parsed = json.loads(content)
+                except json.JSONDecodeError as json_err:
+                    # LLM returned truncated / malformed JSON — attempt repair
+                    repaired = repair_json(content, return_objects=False)
+                    try:
+                        parsed = json.loads(repaired)
+                        print(f"[LLM][L{layer}] {template_name}: JSON repaired (original error: {json_err})")
+                    except json.JSONDecodeError:
+                        raise  # let outer except handle it
                 usage = getattr(response, "usage_metadata", {}) or {}
                 in_tok = usage.get("input_tokens", 0)
                 out_tok = usage.get("output_tokens", 0)
 
                 # End the Langfuse generation with output + token usage
-                generation.end(
-                    output=parsed,
-                    usage={"input": in_tok, "output": out_tok, "unit": "TOKENS"},
-                    metadata={"latency_ms": round(latency, 1)},
-                )
+                if self._trace:
+                    self._trace.generation(
+                        name=f"L{layer}/{template_name}",
+                        model=config.GROQ_MODEL,
+                        input=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        output=parsed,
+                        usage={"input": in_tok, "output": out_tok, "unit": "TOKENS"},
+                        metadata={"layer": layer, "attempt": attempt + 1, "cache_hit": False, "latency_ms": round(latency, 1)},
+                        start_time=t0,
+                        end_time=time.time()
+                    )
 
                 _write_cache(
                     cache_file,
@@ -152,10 +177,18 @@ class LLMClient:
 
             except Exception as e:
                 last_err = e
-                generation.end(
-                    level="ERROR",
-                    status_message=str(e),
-                )
+                if self._trace:
+                    self._trace.generation(
+                        name=f"L{layer}/{template_name}",
+                        model=config.GROQ_MODEL,
+                        input=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        level="ERROR",
+                        status_message=str(e),
+                        metadata={"layer": layer, "attempt": attempt + 1, "cache_hit": False}
+                    )
                 if attempt == 0:
                     sleep_secs = 2 ** attempt  # 1s, then 2s
                     print(f"[LLM][L{layer}] {template_name} attempt {attempt+1} failed: {e}. Retrying in {sleep_secs}s…")
@@ -166,7 +199,8 @@ class LLMClient:
 
     def flush(self):
         """Flush all pending Langfuse events — call at the end of a pipeline run."""
-        self.langfuse.flush()
+        if self.langfuse:
+            self.langfuse.flush()
 
     def _log(self, layer, template_name, in_tok, out_tok, latency, cached):
         from models.schemas import LLMCallRecord

@@ -3,19 +3,6 @@ from enum import Enum
 from typing import Optional
 
 
-class BlockType(str, Enum):
-    """Semantic classification for a chunk — what role it plays in the SOP."""
-    STEP = "STEP"
-    DECISION = "DECISION"
-    EXCEPTION = "EXCEPTION"
-    ACTOR = "ACTOR"
-    CONDITION = "CONDITION"
-    NOTE = "NOTE"
-    META = "META"        # scope, purpose, definitions, informational text (from simplified L3)
-    HEADER = "HEADER"
-    UNKNOWN = "UNKNOWN"
-
-
 class ElementType(str, Enum):
     """Low-level docling element type within a chunk."""
     PARAGRAPH = "paragraph"
@@ -48,11 +35,7 @@ class JobStatus(str, Enum):
     NEEDS_REVIEW = "NEEDS_REVIEW"
 
 
-@dataclass
-class CrossRef:
-    ref_text: str
-    resolved_chunk_id: Optional[str] = None
-    resolution_method: str = "unresolved"  # structural_anchor | llm | unresolved
+
 
 
 @dataclass
@@ -66,10 +49,6 @@ class ChunkElement:
     text: Optional[str] = None
     page_no: Optional[int] = None
     metadata: dict = field(default_factory=dict)
-
-    # ── L3: Classification (element-level) ────────────────────────────────
-    block_type: Optional[BlockType] = None
-    block_type_confidence: float = 0.0
 
 
 @dataclass
@@ -91,18 +70,10 @@ class StructuredChunk:
     elements: list = field(default_factory=list)       # list[ChunkElement]
     page_numbers: list = field(default_factory=list)   # deduplicated page numbers spanned
 
-    # ── L3: Classification (derived from majority element block_type) ────────
-    chunk_type: Optional[BlockType] = None
-    chunk_type_confidence: float = 0.0
-    chunk_type_method: str = ""                        # llm | fallback
+    # ── Enrichment (formerly L4, now deprecated fields) ───────────────────
 
-    # ── L5: Enrichment ────────────────────────────────────────────────────
-    resolved_actor: Optional[str] = None
-    condition_scope: Optional[str] = None
-    cross_refs: list = field(default_factory=list)     # list[CrossRef]
-
-    # ── L6: Atomization ───────────────────────────────────────────────────
-    atomic_units: list = field(default_factory=list)   # list[AtomicUnit]
+    # ── Atomization (set by L6) ───────────────────────────────────────────
+    atomic_units: list = field(default_factory=list)   # list[AtomicStepUnit | AtomicDecisionUnit]
 
     # ── Review flags ──────────────────────────────────────────────────────
     needs_review: bool = False
@@ -110,19 +81,34 @@ class StructuredChunk:
 
 
 @dataclass
-class AtomicUnit:
+class DecisionBranch:
+    """One outcome branch of a decision gateway."""
+    label: str                                             # e.g. "Employee replied"
+    output_variables: list = field(default_factory=list)  # descriptive labels for the edge (e.g. ["employee_replied"])
+    next_step_id: Optional[str] = None                    # unit_id of first step on this branch (filled by L4, repaired by L6)
+
+
+@dataclass
+class AtomicStepUnit:
+    """A sequential task — an actor performs a single action."""
     unit_id: str
     chunk_id: str           # parent StructuredChunk
-    sequence_in_chunk: int
-    action: str
+    action: str             # close paraphrase of the source document text
     actor: str
-    step_type: str = "SIMPLE"  # SIMPLE | CONDITIONAL | DECISION (set by L6 atomizer)
-    condition: Optional[str] = None
-    output: Optional[str] = None
-    is_terminal: bool = False
-    is_start: bool = False
-    inputs: list = field(default_factory=list)    # variable names consumed
-    outputs: list = field(default_factory=list)   # variable names produced
+    prev_step_ids: list = field(default_factory=list)   # list[str] — upstream unit_ids
+    next_step_ids: list = field(default_factory=list)   # list[str] — downstream unit_ids
+    is_terminal: bool = False                           # True if this step ends a process path (no successor)
+
+
+@dataclass
+class AtomicDecisionUnit:
+    """A conditional gateway — evaluates state and routes flow to branches."""
+    unit_id: str
+    chunk_id: str           # parent StructuredChunk
+    action: str             # the question/check ("Check if employee replied after 1 day")
+    actor: str
+    prev_step_ids: list = field(default_factory=list)   # list[str] — upstream unit_ids
+    branches: list = field(default_factory=list)        # list[DecisionBranch]
 
 
 @dataclass
@@ -135,6 +121,7 @@ class BPMNNode:
     actor: Optional[str] = None
     gateway_type: Optional[GatewayType] = None
     gateway_direction: Optional[str] = None  # "DIVERGING" | "CONVERGING" (set by L8)
+    branches: list = field(default_factory=list)  # DIVERGING gateway only: [{label, condition, condition_var, condition_value, target_unit_id, is_default}]
     x: Optional[float] = None
     y: Optional[float] = None
     width: Optional[float] = None
@@ -183,35 +170,8 @@ class ActorRegistry:
 
 
 @dataclass
-class SectionAnchor:
-    anchor_text: str
-    chunk_id: str
-    heading_path: list = field(default_factory=list)
-
-
-@dataclass
-class GlossaryEntry:
-    term: str
-    definition: str
-    chunk_id: str
-    definition_method: str = "llm"
-
-
-@dataclass
-class DataVar:
-    """Named variable flowing through the process (produced by one unit, consumed by others)."""
-    name: str
-    var_type: str = "unknown"  # bool | data | id | count | unknown
-    producer_unit_id: Optional[str] = None
-    consumers: list = field(default_factory=list)
-
-
-@dataclass
 class ContextIndex:
     job_id: str
-    section_anchors: list = field(default_factory=list)   # list[SectionAnchor]
-    glossary: list = field(default_factory=list)           # list[GlossaryEntry]
-    exception_chunks: list = field(default_factory=list)   # chunk_ids of EXCEPTION chunks
     actor_registry: Optional[ActorRegistry] = None
 
 
@@ -245,11 +205,11 @@ class ProcessModel:
     process_id: str
     name: str
     chunks: list = field(default_factory=list)        # list[StructuredChunk] — executable chunks
-    atomic_units: list = field(default_factory=list)
-    data_vars: list = field(default_factory=list)
+    atomic_units: list = field(default_factory=list)  # list[AtomicStepUnit | AtomicDecisionUnit]
     bpmn_nodes: list = field(default_factory=list)
     bpmn_edges: list = field(default_factory=list)
     preamble: list = field(default_factory=list)       # list[StructuredChunk] — context-only chunks
+    actor_heading_map: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -259,7 +219,6 @@ class Job:
     status: JobStatus = JobStatus.PENDING
     current_layer: Optional[int] = None
     error: Optional[JobError] = None
-    sop_class: str = "GENERIC_PROCESS"
     created_at: str = ""
     updated_at: str = ""
     layer_timestamps: dict = field(default_factory=dict)

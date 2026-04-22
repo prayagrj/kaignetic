@@ -2,33 +2,26 @@
 import subprocess
 from pathlib import Path
 
-from models.schemas import Job, JobStatus
-
-
-GATE_ERRORS = {
-    "L1_EMPTY_OUTPUT": "Markdown output is empty or too short.",
-    "L1_CONVERSION_FAILED": "Docling conversion failed.",
-}
+from models.schemas import Job, ProcessModel
+from pipeline.utils.chunk_builder import build_structured_chunks, reconstruct_doc
+from docling.document_converter import DocumentConverter
 
 
 def run(job: Job) -> None:
-
     src = job.source_file_path
     ext = Path(src).suffix.lower()
+    converter = DocumentConverter()
 
     if ext == ".doc":
         src = _convert_doc_to_docx(src)
 
     try:
-        from docling.document_converter import DocumentConverter
-        converter = DocumentConverter()
         result = converter.convert(src)
         markdown = result.document.export_to_markdown()
         docling_doc = result.document.export_to_dict()
     except Exception as e:
         raise LayerError("L1_CONVERSION_FAILED", str(e))
 
-    # Minimal post-processing
     markdown = _collapse_blank_lines(markdown)
 
     job.extraction = {
@@ -36,11 +29,26 @@ def run(job: Job) -> None:
         "docling_document": docling_doc,
     }
 
+    doc = reconstruct_doc(docling_doc)
+    chunks = build_structured_chunks(doc, job.job_id)
+    job.chunks = chunks
+
+    job.processes = [
+        ProcessModel(
+            process_id="main",
+            name="Main Process",
+            chunks=chunks,
+        )
+    ]
+
+
 
 def validate_gate(job: Job) -> None:
     markdown = job.extraction.get("markdown", "")
     if len(markdown.strip()) < 100:
-        raise LayerError("L1_EMPTY_OUTPUT", GATE_ERRORS["L1_EMPTY_OUTPUT"])
+        raise LayerError("L1_EMPTY_OUTPUT", "Markdown output is empty or too short.")
+    if not job.chunks:
+        raise LayerError("L1_NO_CHUNKS", "No content chunks produced from document.")
 
 
 def _convert_doc_to_docx(src: str) -> str:
