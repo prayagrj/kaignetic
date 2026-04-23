@@ -1,0 +1,13 @@
+docling
+langchain
+langchain-groq
+langchain-core
+pydantic>=2
+networkx
+python-dotenv
+pytest
+langfuse<3.0.0
+json-repair
+fastapi
+uvicorn[standard]
+python-multipart

@@ -4,5 +4,6 @@ __pycache__/
 *.pyc
 .vscode/
 .env
-bpmn_pipeline/outputs/
-bpmn_pipeline/.llm_cache/
+backend/outputs/
+backend/.llm_cache/
+backend/jobs/

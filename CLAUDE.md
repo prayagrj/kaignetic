@@ -8,11 +8,11 @@ BPMN Pipeline converts unstructured SOP documents (PDF, DOCX, DOC) into BPMN 2.0
 
 ## Repository Layout
 
-All source code lives under `bpmn_pipeline/`. Run commands from that directory or use paths relative to it.
+All source code lives under `backend/`. Run commands from that directory or use paths relative to it.
 
 ```
 kaignetic/
-├── bpmn_pipeline/
+├── backend/
 │   ├── main.py              ← CLI entry point
 │   ├── config.py            ← all configuration constants
 │   ├── requirements.txt
@@ -36,8 +36,7 @@ kaignetic/
 │   ├── pipeline/utils/
 │   │   ├── chunk_builder.py
 │   │   ├── chunker.py
-│   │   ├── debug_utils.py
-│   │   └── decision_patterns.py
+│   │   └── debug_utils.py
 │   ├── tests/
 │   │   └── smoke_test.py
 │   ├── jobs/                ← place input .pdf/.docx files here
@@ -47,7 +46,7 @@ kaignetic/
 ## Commands
 
 ```bash
-# Run the pipeline on a document (from bpmn_pipeline/)
+# Run the pipeline on a document (from backend/)
 python main.py <path_to_pdf_or_docx>
 
 # Run smoke/integration tests
@@ -71,7 +70,6 @@ The pipeline is a **sequential 8-layer orchestrator** (`pipeline/orchestrator.py
 | 5 | `l5_edge_detector.py` | Builds `BPMNEdge` set: explicit links → sequential spine → gateway wiring → converging gateways → LLM reconnect |
 | 6 | `l6_process_splitter.py` | Splits single graph into multiple `ProcessModel` objects via heuristic scoring + optional LLM |
 | 7 | `l7_dag_resolver.py` | NetworkX validation: reachability, cycles, lane assignment, edge deduplication |
-| 8 | `l8_translator.py` | Serializes to BPMN 2.0 XML with swimlane layout; writes `.bpmn` + `report.json` |
 
 ### Core Data Models (`models/schemas.py`)
 
@@ -118,13 +116,13 @@ All layers share a single `LLMClient.call()` method backed by LangChain's `ChatG
 
 ### Outputs
 
-- `outputs/{job_id}_{process_id}_{name}.bpmn` — BPMN 2.0 XML with swimlanes, gateway conditions, computed layout
-- `outputs/{job_id}_report.json` — node/edge counts, gateway types, review flags, LLM call log
+- `outputs/{job_id}_report.json` — process/node/edge counts, review flags, LLM call log (written by server after upload)
+- `outputs/layer-wise-output/{job_id}/L7_l7_dag_resolver_output.json` — the graph snapshot the server reads to serve nodes + edges to the frontend
 
 ### Debug Output
 
 `debug_utils.save_layer_state()` serializes `job` state to JSON after each layer:
-`bpmn_pipeline/outputs/layer-wise-output/{job_id}/L{n}_{name}_{stage}.json`
+`backend/outputs/layer-wise-output/{job_id}/L{n}_{name}_{stage}.json`
 
 ## Testing Notes
 
@@ -133,4 +131,3 @@ All layers share a single `LLMClient.call()` method backed by LangChain's `ChatG
 ## Known Quirks
 
 - **Gate validation is disabled**: `validate_gate()` exists on all layer classes but is commented out in the orchestrator.
-- **`decision_patterns.py`** (`DECISION_INLINE` regex) is defined but unused — decision detection is fully delegated to the LLM atomizer.
